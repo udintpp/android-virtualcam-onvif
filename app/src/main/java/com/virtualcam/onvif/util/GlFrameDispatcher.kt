@@ -60,6 +60,7 @@ class GlFrameDispatcher(
     private var surfaceTexture: SurfaceTexture? = null
     var inputSurface: Surface? = null
         private set
+    private var lastPresentationTimeNs = 0L
 
     // Test Pattern Generator Mode
     @Volatile
@@ -304,7 +305,9 @@ class GlFrameDispatcher(
             return
         }
 
-        val frameTimeNs = st.timestamp
+        val nowNs = System.nanoTime()
+        val frameTimeNs = if (nowNs > lastPresentationTimeNs) nowNs else lastPresentationTimeNs + 1000L
+        lastPresentationTimeNs = frameTimeNs
 
         // 1. Render to Preview (Phone Display)
         if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewSurface?.isValid == true) {
@@ -331,6 +334,8 @@ class GlFrameDispatcher(
     private fun drawPatternFrame() {
         patternTick++
         val nowNs = System.nanoTime()
+        val frameTimeNs = if (nowNs > lastPresentationTimeNs) nowNs else lastPresentationTimeNs + 1000L
+        lastPresentationTimeNs = frameTimeNs
 
         // 1. Render to Preview
         if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewSurface?.isValid == true) {
@@ -349,7 +354,7 @@ class GlFrameDispatcher(
             if (previewEglSurface == EGL14.EGL_NO_SURFACE) {
                 captureMjpegFrameIfNeeded(encoderWidth, encoderHeight)
             }
-            EGLExt.eglPresentationTimeANDROID(eglDisplay, encoderEglSurface, nowNs)
+            EGLExt.eglPresentationTimeANDROID(eglDisplay, encoderEglSurface, frameTimeNs)
             EGL14.eglSwapBuffers(eglDisplay, encoderEglSurface)
         }
     }
@@ -430,6 +435,7 @@ class GlFrameDispatcher(
     }
 
     private fun drawQuad(targetW: Int, targetH: Int) {
+        GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         GLES20.glUseProgram(program)
 

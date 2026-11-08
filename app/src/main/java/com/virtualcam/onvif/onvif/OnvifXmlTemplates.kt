@@ -123,7 +123,37 @@ object OnvifXmlTemplates {
 </soap:Envelope>"""
     }
 
-    fun getProfilesResponse(width: Int, height: Int): String {
+    fun getProfilesResponse(width: Int, height: Int, includeAudio: Boolean = false): String {
+        val audioSourceXml = if (includeAudio) {
+            """
+        <tt:AudioSourceConfiguration token="AudioSourceConfig_1">
+          <tt:Name>VirtualAudioSource</tt:Name>
+          <tt:UseCount>1</tt:UseCount>
+          <tt:SourceToken>AudioSource_1</tt:SourceToken>
+        </tt:AudioSourceConfiguration>"""
+        } else ""
+
+        val audioEncoderXml = if (includeAudio) {
+            """
+        <tt:AudioEncoderConfiguration token="AudioEncoderConfig_1">
+          <tt:Name>AAC_Config</tt:Name>
+          <tt:UseCount>1</tt:UseCount>
+          <tt:Encoding>AAC</tt:Encoding>
+          <tt:Bitrate>64</tt:Bitrate>
+          <tt:SampleRate>44100</tt:SampleRate>
+          <tt:Multicast>
+            <tt:Address>
+              <tt:Type>IPv4</tt:Type>
+              <tt:IPv4Address>0.0.0.0</tt:IPv4Address>
+            </tt:Address>
+            <tt:Port>0</tt:Port>
+            <tt:TTL>5</tt:TTL>
+            <tt:AutoStart>false</tt:AutoStart>
+          </tt:Multicast>
+          <tt:SessionTimeout>PT60S</tt:SessionTimeout>
+        </tt:AudioEncoderConfiguration>"""
+        } else ""
+
         return """<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:trt="http://www.onvif.org/ver10/media/wsdl" xmlns:tt="http://www.onvif.org/ver10/schema">
   <soap:Body>
@@ -135,7 +165,7 @@ object OnvifXmlTemplates {
           <tt:UseCount>1</tt:UseCount>
           <tt:SourceToken>VideoSource_1</tt:SourceToken>
           <tt:Bounds x="0" y="0" width="$width" height="$height"/>
-        </tt:VideoSourceConfiguration>
+        </tt:VideoSourceConfiguration>$audioSourceXml
         <tt:VideoEncoderConfiguration token="VideoEncoderConfig_1">
           <tt:Name>H264_Config</tt:Name>
           <tt:UseCount>1</tt:UseCount>
@@ -163,7 +193,7 @@ object OnvifXmlTemplates {
             <tt:TTL>5</tt:TTL>
             <tt:AutoStart>false</tt:AutoStart>
           </tt:Multicast>
-        </tt:VideoEncoderConfiguration>
+        </tt:VideoEncoderConfiguration>$audioEncoderXml
       </trt:Profiles>
     </trt:GetProfilesResponse>
   </soap:Body>

@@ -16,6 +16,13 @@
     <string name="source_screen">📱 Tampilan Layar (Screen Mirror)</string>
     <string name="source_test_pattern">📺 Test Pattern (SMPTE Bars)</string>
 
+    <!-- Audio stream selections -->
+    <string name="audio_source_title">Aliran Audio Streaming (RTSP / Web)</string>
+    <string name="audio_source_none">🔇 Tanpa Audio (Video Saja)</string>
+    <string name="audio_source_media">🎵 Audio Media (Video MP4 / Suara Layar)</string>
+    <string name="audio_source_mic">🎙️ Mikrofon (Mic HP)</string>
+    <string name="audio_source_both">🔊 Keduanya (Media + Mic)</string>
+
     <string name="btn_select_video">Pilih Video MP4</string>
     <string name="no_video_selected">Belum ada video dipilih</string>
     <string name="loop_video">Putar Ulang Otomatis (Loop)</string>

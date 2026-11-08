@@ -14,6 +14,8 @@ class VideoSourceEngine(private val context: Context) {
     private var currentSurface: Surface? = null
     private var videoUri: Uri? = null
     private var isLooping: Boolean = true
+    @Volatile
+    private var isPrepared: Boolean = false
 
     var currentVideoWidth: Int = 0
         private set
@@ -29,6 +31,22 @@ class VideoSourceEngine(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e(tag, "Error setting surface on MediaPlayer", e)
+        }
+    }
+
+    fun isPlaying(): Boolean {
+        return try {
+            isPrepared && (mediaPlayer?.isPlaying == true)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun getCurrentPositionMs(): Int {
+        return try {
+            if (isPrepared && mediaPlayer != null) mediaPlayer?.currentPosition ?: 0 else 0
+        } catch (e: Exception) {
+            0
         }
     }
 
@@ -60,9 +78,10 @@ class VideoSourceEngine(private val context: Context) {
                 }
 
                 this.isLooping = looping
-                setVolume(0f, 0f) // Keep muted for camera feed
+                setVolume(0f, 0f) // Audio is extracted cleanly into the streaming pipeline
 
                 setOnPreparedListener { mp ->
+                    isPrepared = true
                     currentVideoWidth = mp.videoWidth
                     currentVideoHeight = mp.videoHeight
                     Log.d(tag, "MediaPlayer prepared (${mp.videoWidth}x${mp.videoHeight}), starting playback")
@@ -72,6 +91,7 @@ class VideoSourceEngine(private val context: Context) {
 
                 setOnErrorListener { _, what, extra ->
                     Log.e(tag, "MediaPlayer error: what=$what, extra=$extra")
+                    isPrepared = false
                     false
                 }
 
@@ -90,6 +110,7 @@ class VideoSourceEngine(private val context: Context) {
     }
 
     fun stop() {
+        isPrepared = false
         try {
             mediaPlayer?.apply {
                 if (isPlaying) stop()

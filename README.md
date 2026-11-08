@@ -23,10 +23,16 @@ Aplikasi **Android Virtual Camera** & **ONVIF/RTSP Server** yang memungkinkan po
    - 🪞 **Mode Cermin:** Toggle cermin horizontal untuk selfie atau video.
    - 📐 **Mode Skala:** Pilih Fit (rasio asli dengan letterbox) atau Crop (isi layar penuh).
 
-4. **Akses Jaringan IP (ONVIF & RTSP):**
+4. **Pilihan Aliran Audio Live (Media / Mic / Keduanya):**
+   - 🔇 **Tanpa Audio:** Streaming video saja tanpa trek audio.
+   - 🎵 **Audio Media:** Mengekstrak suara asli file video MP4 (tersinkronisasi otomatis saat looping) atau menangkap audio internal layar/game saat *Screen Mirror* (Android 10+).
+   - 🎙️ **Mikrofon (Mic HP):** Menyiarkan suara langsung dari mikrofon perangkat.
+   - 🔊 **Keduanya (Media + Mic):** Mencampur (*real-time mixing*) suara media video/layar dengan mikrofon tanpa gema.
+
+5. **Akses Jaringan IP (ONVIF, RTSP & Web Player):**
    - **WS-Discovery Server (UDP 3702):** Terdeteksi otomatis oleh aplikasi *ONVIF Device Manager (ODM)*, NVR CCTV, Synology Surveillance Station, Blue Iris, Shinobi, dan iSpy.
-   - **ONVIF SOAP HTTP Server (Port 8080):** Menyediakan endpoint `GetDeviceInformation`, `GetCapabilities`, `GetProfiles`, `GetStreamUri`, dan snapshot HTTP `/snapshot.jpg`.
-   - **RTSP Live H.264 Server (Port 8554):** Kompatibel penuh dengan VLC Media Player (`rtsp://<IP-HP>:8554/live`), OBS Studio, ffmpeg, dan NVR CCTV via TCP maupun UDP.
+   - **ONVIF SOAP & Web HTTP Server (Port 8080):** Menyediakan Web Player live video + audio (`/audio.pcm`, `/audio.aac`), endpoint ONVIF `GetProfiles` (dengan profil Audio AAC), `GetStreamUri`, dan snapshot `/snapshot.jpg`.
+   - **RTSP Live H.264 + AAC Server (Port 8554):** Streaming multi-track Video H.264 + Audio AAC (`RFC 3640`) beserta *RTCP Sender Report* untuk VLC Media Player (`rtsp://<IP-HP>:8554/live`), OBS Studio, ffmpeg, dan NVR CCTV.
 
 ---
 

@@ -86,7 +86,11 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
             prefs.videoUri = uri.toString()
             binding.tvSelectedVideo.text = uri.lastPathSegment ?: uri.toString()
-            restartPreview()
+            if (VirtualCamService.isRunning && prefs.sourceMode == Prefs.SOURCE_VIDEO) {
+                VirtualCamService.currentInstance?.startActiveSource()
+            } else {
+                restartPreview()
+            }
         }
     }
 
@@ -95,6 +99,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     ) { permissions ->
         if (permissions[Manifest.permission.CAMERA] == true) {
             restartPreview()
+        }
+        if (permissions[Manifest.permission.RECORD_AUDIO] == true) {
+            VirtualCamService.currentInstance?.updateAudioSource()
         }
     }
 
@@ -157,6 +164,14 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             }
         }
 
+        // Restore Audio Mode
+        when (prefs.audioMode) {
+            Prefs.AUDIO_NONE -> binding.rbAudioNone.isChecked = true
+            Prefs.AUDIO_MEDIA -> binding.rbAudioMedia.isChecked = true
+            Prefs.AUDIO_MIC -> binding.rbAudioMic.isChecked = true
+            Prefs.AUDIO_BOTH -> binding.rbAudioBoth.isChecked = true
+        }
+
         binding.switchLoop.isChecked = prefs.isLooping
         binding.switchFloating.isChecked = prefs.isFloatingEnabled
 
@@ -210,13 +225,50 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             VirtualCamService.currentInstance?.startActiveSource()
         }
 
+        binding.rgAudioSource.setOnCheckedChangeListener { _, checkedId ->
+            val prevMode = prefs.audioMode
+            val newMode = when (checkedId) {
+                R.id.rbAudioNone -> Prefs.AUDIO_NONE
+                R.id.rbAudioMedia -> Prefs.AUDIO_MEDIA
+                R.id.rbAudioMic -> Prefs.AUDIO_MIC
+                R.id.rbAudioBoth -> Prefs.AUDIO_BOTH
+                else -> Prefs.AUDIO_MEDIA
+            }
+            prefs.audioMode = newMode
+
+            val needsRecordPerm = (newMode == Prefs.AUDIO_MIC ||
+                    newMode == Prefs.AUDIO_BOTH ||
+                    (newMode == Prefs.AUDIO_MEDIA && prefs.sourceMode == Prefs.SOURCE_SCREEN))
+
+            if (needsRecordPerm &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+            }
+
+            if (VirtualCamService.isRunning) {
+                VirtualCamService.currentInstance?.updateAudioSource()
+                if ((prevMode == Prefs.AUDIO_NONE) != (newMode == Prefs.AUDIO_NONE)) {
+                    Toast.makeText(
+                        this,
+                        "Mode audio diubah. Muat ulang RTSP player jika sebelumnya Tanpa Audio.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+
         binding.btnSelectVideo.setOnClickListener {
             videoPickerLauncher.launch(arrayOf("video/*"))
         }
 
         binding.switchLoop.setOnCheckedChangeListener { _, isChecked ->
             prefs.isLooping = isChecked
-            restartPreview()
+            if (VirtualCamService.isRunning && prefs.sourceMode == Prefs.SOURCE_VIDEO) {
+                VirtualCamService.currentInstance?.startActiveSource()
+            } else {
+                restartPreview()
+            }
         }
 
         binding.btnToggleStream.setOnClickListener {
@@ -554,6 +606,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         permissions.add(Manifest.permission.CAMERA)
+        permissions.add(Manifest.permission.RECORD_AUDIO)
 
         val ungranted = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED

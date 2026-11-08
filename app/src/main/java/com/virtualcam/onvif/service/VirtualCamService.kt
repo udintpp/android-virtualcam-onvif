@@ -1,10 +1,12 @@
 package com.virtualcam.onvif.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.hardware.camera2.CameraCharacteristics
 import android.media.projection.MediaProjection
@@ -18,9 +20,12 @@ import android.os.PowerManager
 import android.util.Log
 import android.view.Surface
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.virtualcam.onvif.MainActivity
 import com.virtualcam.onvif.R
 import com.virtualcam.onvif.VirtualCamApp
+import com.virtualcam.onvif.audio.AacEncoder
+import com.virtualcam.onvif.audio.AudioCaptureMixer
 import com.virtualcam.onvif.encoder.H264Encoder
 import com.virtualcam.onvif.onvif.OnvifHttpServer
 import com.virtualcam.onvif.onvif.WsDiscoveryServer
@@ -42,6 +47,8 @@ class VirtualCamService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
 
     private var h264Encoder: H264Encoder? = null
+    private var aacEncoder: AacEncoder? = null
+    private var audioCaptureMixer: AudioCaptureMixer? = null
     private var rtspServer: RtspServer? = null
     private var onvifServer: OnvifHttpServer? = null
     private var wsDiscoveryServer: WsDiscoveryServer? = null
@@ -105,6 +112,12 @@ class VirtualCamService : Service() {
         }
         screenEngine = ScreenSourceEngine(this)
         glDispatcher = GlFrameDispatcher(prefs.width, prefs.height)
+        audioCaptureMixer = AudioCaptureMixer(
+            context = this,
+            sampleRate = 44100,
+            isVideoPlaying = { videoEngine.isPlaying() },
+            getVideoPositionMs = { videoEngine.getCurrentPositionMs() }
+        )
 
         acquireLocks()
     }
@@ -153,7 +166,7 @@ class VirtualCamService : Service() {
         val notification = createNotification(localIp)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val fgsType = if (explicitType != 0) {
+            var fgsType = if (explicitType != 0) {
                 explicitType
             } else {
                 when (prefs.sourceMode) {
@@ -165,6 +178,16 @@ class VirtualCamService : Service() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0
                     }
                 }
+            }
+
+            val wantsMicOrPlaybackCapture = (prefs.audioMode == Prefs.AUDIO_MIC ||
+                    prefs.audioMode == Prefs.AUDIO_BOTH ||
+                    (prefs.audioMode == Prefs.AUDIO_MEDIA && prefs.sourceMode == Prefs.SOURCE_SCREEN))
+
+            if (wantsMicOrPlaybackCapture && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            ) {
+                fgsType = fgsType or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
 
             try {
@@ -210,19 +233,21 @@ class VirtualCamService : Service() {
             Log.e(tag, "Error starting H264Encoder", e)
         }
 
-        // 2. RTSP Server (Port 8554)
+        // 2. RTSP Server (Port 8554, supports H264 Video + AAC Audio)
         try {
             rtspServer = RtspServer(
                 localIp = localIp,
                 port = 8554,
                 getSps = { h264Encoder?.sps },
-                getPps = { h264Encoder?.pps }
+                getPps = { h264Encoder?.pps },
+                isAudioEnabled = { prefs.audioMode != Prefs.AUDIO_NONE },
+                getAudioConfigHex = { aacEncoder?.getAudioSpecificConfigHex() ?: "1208" }
             ).apply { start() }
         } catch (e: Exception) {
             Log.e(tag, "Error starting RTSP Server", e)
         }
 
-        // 3. ONVIF SOAP & Web MJPEG HTTP Server (Port 8080)
+        // 3. ONVIF SOAP & Web MJPEG + Live Audio HTTP Server (Port 8080)
         try {
             onvifServer = OnvifHttpServer(
                 localIp = localIp,
@@ -230,7 +255,16 @@ class VirtualCamService : Service() {
                 rtspPort = 8554,
                 getDimensions = { Pair(width, height) },
                 getLatestJpeg = { glDispatcher.latestJpegBytes },
-                setWebActive = { glDispatcher.hasActiveWebClients = it }
+                setWebActive = { glDispatcher.hasActiveWebClients = it },
+                getAudioModeName = {
+                    when (prefs.audioMode) {
+                        Prefs.AUDIO_MEDIA -> "Media"
+                        Prefs.AUDIO_MIC -> "Mikrofon"
+                        Prefs.AUDIO_BOTH -> "Media + Mic"
+                        else -> "Nonaktif"
+                    }
+                },
+                isAudioEnabled = { prefs.audioMode != Prefs.AUDIO_NONE }
             ).apply { start() }
         } catch (e: Exception) {
             Log.e(tag, "Error starting ONVIF HTTP Server", e)
@@ -261,7 +295,7 @@ class VirtualCamService : Service() {
             Log.e(tag, "Error starting GL Dispatcher", e)
         }
 
-        // 6. Connect Active Source
+        // 6. Connect Active Video & Audio Sources
         try {
             startActiveSource()
         } catch (e: Exception) {
@@ -391,6 +425,58 @@ class VirtualCamService : Service() {
                 glDispatcher.setTestPatternMode(true)
             }
         }
+
+        updateAudioSource()
+    }
+
+    fun updateAudioSource() {
+        if (!isRunning) return
+        startServiceForeground()
+
+        val audioMode = prefs.audioMode
+        val sourceMode = prefs.sourceMode
+        val videoUri = prefs.videoUri?.takeIf { it.isNotEmpty() }?.let { Uri.parse(it) }
+
+        if (audioMode == Prefs.AUDIO_NONE) {
+            audioCaptureMixer?.stop()
+            aacEncoder?.stop()
+            aacEncoder = null
+            return
+        }
+
+        if (aacEncoder == null) {
+            aacEncoder = AacEncoder(sampleRate = 44100, channelCount = 1, bitrate = 64_000).apply {
+                onAacFrameListener = { aacData, ptsUs ->
+                    rtspServer?.broadcastAudioFrame(aacData, ptsUs)
+                    onvifServer?.broadcastAacAdtsAudio(addAdtsHeader(aacData))
+                }
+                start()
+            }
+        }
+
+        val mixer = audioCaptureMixer ?: return
+        mixer.onPcmFrameListener = { pcmBytes, ptsUs ->
+            onvifServer?.broadcastPcmAudio(pcmBytes)
+            aacEncoder?.encodePcm(pcmBytes, ptsUs)
+        }
+
+        if (!mixer.isActive) {
+            mixer.start(
+                audioMode = audioMode,
+                sourceMode = sourceMode,
+                videoUri = videoUri,
+                isLooping = prefs.isLooping,
+                mediaProjection = mediaProjection
+            )
+        } else {
+            mixer.reconfigure(
+                audioMode = audioMode,
+                sourceMode = sourceMode,
+                videoUri = videoUri,
+                isLooping = prefs.isLooping,
+                mediaProjection = mediaProjection
+            )
+        }
     }
 
     fun stopStreaming() {
@@ -401,6 +487,7 @@ class VirtualCamService : Service() {
         try { videoEngine.stop() } catch (ignored: Exception) {}
         try { screenEngine.stop() } catch (ignored: Exception) {}
         try { glDispatcher.stop() } catch (ignored: Exception) {}
+        try { audioCaptureMixer?.stop() } catch (ignored: Exception) {}
 
         try { wsDiscoveryServer?.stop() } catch (ignored: Exception) {}
         wsDiscoveryServer = null
@@ -413,6 +500,9 @@ class VirtualCamService : Service() {
 
         try { h264Encoder?.stop() } catch (ignored: Exception) {}
         h264Encoder = null
+
+        try { aacEncoder?.stop() } catch (ignored: Exception) {}
+        aacEncoder = null
 
         currentPreviewSurface = null
         pendingPreviewSurface = null

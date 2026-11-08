@@ -16,6 +16,11 @@ class Prefs(context: Context) {
 
         const val SCALE_MODE_FIT = 0
         const val SCALE_MODE_CROP = 1
+
+        const val AUDIO_NONE = 0
+        const val AUDIO_MEDIA = 1
+        const val AUDIO_MIC = 2
+        const val AUDIO_BOTH = 3
     }
 
     var sourceMode: Int
@@ -69,4 +74,8 @@ class Prefs(context: Context) {
     var scaleMode: Int
         get() = prefs.getInt("scale_mode", SCALE_MODE_FIT)
         set(value) = prefs.edit().putInt("scale_mode", value).apply()
+
+    var audioMode: Int
+        get() = prefs.getInt("audio_mode", AUDIO_MEDIA)
+        set(value) = prefs.edit().putInt("audio_mode", value).apply()
 }

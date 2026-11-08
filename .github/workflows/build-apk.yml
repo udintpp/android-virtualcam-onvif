@@ -44,17 +44,16 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3.2
-          name: "VirtualCam ONVIF v1.3.2"
+          tag_name: v1.4.0
+          name: "VirtualCam ONVIF v1.4.0"
           body: |
-            ### 📷 VirtualCam ONVIF v1.3.2 - Perbaikan Aspek Rasio, Orientasi & Kontrol Rotasi/Cermin
-            - **Anti-Distorsi Aspek Rasio (Fix Tarik / Pres):** Menambahkan perhitungan matriks MVP (Model-View-Projection) di shader OpenGL ES (`GlFrameDispatcher`) untuk menjaga proporsi asli video dan kamera tanpa melar atau gepeng.
-            - **Orientasi Sensor Tegak Lurus (Upright Orientation):** Sensor kamera depan (270°) dan belakang (90°) kini dikoreksi secara otomatis sehingga wajah tampil tegak normal (tidak miring 90° ke samping).
-            - **Tombol Kontrol Interaktif di Layar:**
-              - 🔄 **Rotasi (0°, 90°, 180°, 270°):** Putar orientasi kamera/video secara instan langsung saat live streaming.
-              - 🪞 **Cermin (Mirror On / Off):** Aktifkan atau matikan mode cermin selfie sesuai kenyamanan.
-              - 📐 **Mode Skala (Fit Rasio Asli / Crop Layar Penuh):** Pilih tampilan letterbox berbingkai hitam atau crop memenuhi layar.
-            - **Deteksi Otomatis Dimensi Video MP4:** Menyesuaikan aspek rasio file video (16:9 landscape, 9:16 portrait, atau 4:3) secara otomatis.
+            ### 📷 VirtualCam ONVIF v1.4.0 - Aliran Audio Live (Media / Mic / Keduanya)
+            - **Pilihan Sumber Audio Interaktif:** Kini tersedia pilihan aliran audio **Tanpa Audio**, **Audio Media** (suara file video MP4 / suara internal layar Android 10+), **Mikrofon (Mic HP)**, atau **Keduanya (Media + Mic digabung secara real-time)**.
+            - **Dekoder Audio MP4 Tersinkronisasi (`Mp4AudioDecoder`):** Mengekstrak, downmix, dan resampling audio langsung dari file video MP4 agar jernih tanpa gema speaker saat dipadukan dengan mikrofon.
+            - **Audio Internal Layar (`AudioPlaybackCapture`):** Menangkap suara game/aplikasi/browser saat mode *Screen Mirror* aktif (Android 10+).
+            - **RTSP Multi-Track Video H.264 + Audio AAC (`RFC 3640`):** Mengirimkan audio AAC 44.1 kHz beserta *RTCP Sender Report* untuk sinkronisasi suara & gambar yang presisi di VLC, OBS Studio, FFmpeg, dan ONVIF NVR.
+            - **Pemutar Audio Live di Browser (`http://<IP>:8080/`):** Dilengkapi tombol **🔊 Putar Audio Live** menggunakan Web Audio API (`/audio.pcm`) serta endpoint stream ADTS `/audio.aac`.
+            - **Perbaikan Tambahan:** Sinkronisasi timestamp video-audio seragam (`System.nanoTime()`) saat video MP4 looping & reset `glClearColor` hitam pada *letterbox*.
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
