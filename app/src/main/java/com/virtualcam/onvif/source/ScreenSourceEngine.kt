@@ -4,10 +4,10 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.projection.MediaProjection
-import android.util.DisplayMetrics
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Surface
-import android.view.WindowManager
 
 class ScreenSourceEngine(private val context: Context) {
 
@@ -15,6 +15,14 @@ class ScreenSourceEngine(private val context: Context) {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var currentSurface: Surface? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            Log.d(tag, "MediaProjection session stopped by system")
+            stop()
+        }
+    }
 
     fun start(
         projection: MediaProjection,
@@ -26,12 +34,17 @@ class ScreenSourceEngine(private val context: Context) {
         this.mediaProjection = projection
         this.currentSurface = surface
 
+        if (!surface.isValid) {
+            Log.e(tag, "Provided surface is not valid")
+            return
+        }
+
         try {
-            val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            wm.defaultDisplay.getMetrics(metrics)
-            val density = metrics.densityDpi
+            // Android 14+ requires registering callback before createVirtualDisplay
+            projection.registerCallback(projectionCallback, mainHandler)
+
+            // Safe context-independent density resolution (avoids WindowManager.defaultDisplay UnsupportedOperationException)
+            val density = context.resources.displayMetrics.densityDpi
 
             virtualDisplay = projection.createVirtualDisplay(
                 "VirtualCam_ScreenDisplay",
@@ -41,7 +54,7 @@ class ScreenSourceEngine(private val context: Context) {
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 surface,
                 null,
-                null
+                mainHandler
             )
             Log.d(tag, "VirtualDisplay created successfully: ${width}x$height @ $density dpi")
         } catch (e: Exception) {
@@ -57,6 +70,11 @@ class ScreenSourceEngine(private val context: Context) {
         } finally {
             virtualDisplay = null
         }
+
+        try {
+            mediaProjection?.unregisterCallback(projectionCallback)
+        } catch (ignored: Exception) {}
+
         mediaProjection = null
         currentSurface = null
     }

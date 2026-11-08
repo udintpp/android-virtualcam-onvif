@@ -10,9 +10,9 @@ android {
     defaultConfig {
         applicationId = "com.virtualcam.onvif"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 3
-        versionName = "1.2.0"
+        targetSdk = 33
+        versionCode = 4
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

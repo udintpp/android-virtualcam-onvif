@@ -109,20 +109,31 @@ class GlFrameDispatcher(
             renderHandler = Handler(looper)
         }
 
+        val initLatch = java.util.concurrent.CountDownLatch(1)
         renderHandler?.post {
-            initEgl()
-            initGl()
+            try {
+                initEgl()
+                initGl()
 
-            textureId = createOesTexture()
-            surfaceTexture = SurfaceTexture(textureId).apply {
-                setDefaultBufferSize(defaultWidth, defaultHeight)
-                setOnFrameAvailableListener({
-                    renderHandler?.post { drawFrames() }
-                }, renderHandler)
+                textureId = createOesTexture()
+                surfaceTexture = SurfaceTexture(textureId).apply {
+                    setDefaultBufferSize(defaultWidth, defaultHeight)
+                    setOnFrameAvailableListener({
+                        renderHandler?.post { drawFrames() }
+                    }, renderHandler)
+                }
+                inputSurface = Surface(surfaceTexture)
+                Log.d(tag, "GlFrameDispatcher initialized with inputSurface: $inputSurface")
+            } catch (e: Exception) {
+                Log.e(tag, "Error during GlFrameDispatcher init", e)
+            } finally {
+                initLatch.countDown()
             }
-            inputSurface = Surface(surfaceTexture)
-            Log.d(tag, "GlFrameDispatcher initialized with inputSurface: $inputSurface")
         }
+
+        try {
+            initLatch.await(2, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (ignored: Exception) {}
     }
 
     fun setPreviewSurface(surface: Surface?, width: Int = defaultWidth, height: Int = defaultHeight) {
@@ -280,6 +291,17 @@ class GlFrameDispatcher(
         val configs = arrayOfNulls<EGLConfig>(1)
         val numConfigs = IntArray(1)
         EGL14.eglChooseConfig(eglDisplay, configAttribs, 0, configs, 0, 1, numConfigs, 0)
+        if (numConfigs[0] == 0 || configs[0] == null) {
+            val fallbackAttribs = intArrayOf(
+                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                EGL14.EGL_RED_SIZE, 8,
+                EGL14.EGL_GREEN_SIZE, 8,
+                EGL14.EGL_BLUE_SIZE, 8,
+                EGL14.EGL_ALPHA_SIZE, 8,
+                EGL14.EGL_NONE
+            )
+            EGL14.eglChooseConfig(eglDisplay, fallbackAttribs, 0, configs, 0, 1, numConfigs, 0)
+        }
         eglConfig = configs[0]
 
         val contextAttribs = intArrayOf(

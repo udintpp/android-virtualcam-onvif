@@ -4,6 +4,12 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.os.Environment
+import android.util.Log
+import java.io.File
+import java.io.FileOutputStream
+import java.io.PrintWriter
+import java.io.StringWriter
 
 class VirtualCamApp : Application() {
 
@@ -16,7 +22,30 @@ class VirtualCamApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        setupCrashHandler()
         createNotificationChannel()
+    }
+
+    private fun setupCrashHandler() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e("VirtualCamCrash", "FATAL CRASH in thread ${thread.name}", throwable)
+            try {
+                val sw = StringWriter()
+                throwable.printStackTrace(PrintWriter(sw))
+                val logText = "Crash in thread ${thread.name}:\n$sw\n\n"
+
+                val logFile = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "virtualcam_crash.log"
+                )
+                FileOutputStream(logFile, true).use {
+                    it.write(logText.toByteArray())
+                }
+            } catch (ignored: Exception) {}
+
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
     }
 
     private fun createNotificationChannel() {

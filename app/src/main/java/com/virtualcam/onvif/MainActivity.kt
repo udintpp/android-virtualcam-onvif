@@ -42,10 +42,20 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            VirtualCamService.mediaProjection = projectionManager.getMediaProjection(result.resultCode, result.data!!)
-            startStreamService()
-            restartPreview()
+            val serviceIntent = Intent(this, VirtualCamService::class.java).apply {
+                action = VirtualCamService.ACTION_START_SCREEN
+                putExtra(VirtualCamService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(VirtualCamService.EXTRA_RESULT_DATA, result.data)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            binding.previewTextureView.postDelayed({
+                updateServiceStateUI()
+                restartPreview()
+            }, 300)
         } else {
             Toast.makeText(this, "Izin tangkap layar ditolak", Toast.LENGTH_SHORT).show()
             binding.rbPattern.isChecked = true

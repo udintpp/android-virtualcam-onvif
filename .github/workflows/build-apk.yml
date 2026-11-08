@@ -44,20 +44,14 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.0
-          name: "VirtualCam ONVIF v1.2.0"
+          tag_name: v1.3.0
+          name: "VirtualCam ONVIF v1.3.0"
           body: |
-            ### 📷 VirtualCam ONVIF v1.2.0
-            - **Web Browser Live Video Stream (MJPEG):** Sekarang saat diakses dari browser (Chrome, Edge, Safari di tablet/laptop/PC) pada port 8080 (`http://<IP>:8080/`), video live langsung tampil bergerak di halaman web!
-            - **Perbaikan Rute Web:** Mengakses alamat root `/`, `/video`, maupun URL ONVIF melalui web browser akan menampilkan web player interaktif, bukan lagi layar putih kosong.
-            - Menambahkan snapshot downloader langsung (`/snapshot.jpg`).
-            ### 📷 VirtualCam ONVIF for Android
-            Aplikasi Virtual Camera untuk Android dengan fitur:
-            - Terdeteksi sebagai kamera sistem oleh aplikasi lain (Intent Camera Chooser).
-            - Mendukung modul LSPosed/Xposed untuk aplikasi panggilan langsung (WhatsApp, Zoom, Meet, Chrome).
-            - Sumber video: File MP4 lokal (looping) atau Rekam Layar (Screen Mirror MediaProjection).
-            - ONVIF Device & Media Service (Port 8080) dengan WS-Discovery otomatis (UDP 3702).
-            - Live RTSP H.264 Server (Port 8554) kompatibel dengan VLC, OBS, NVR CCTV.
+            ### 📷 VirtualCam ONVIF v1.3.0 - Perbaikan Crash & Tampilan Layar
+            - **Perbaikan Force Close saat Mulai Streaming:** Mengisolasi Foreground Service lifecycle dengan tipe dinamis (`camera`, `mediaProjection`, `mediaPlayback`) serta pengaturan kompatibilitas Android 14+ (`targetSdk = 33`).
+            - **Perbaikan Force Close saat Transmisi Layar:** Memperbaiki aliran otorisasi `MediaProjectionManager`, menambahkan `MediaProjection.Callback` (wajib di Android 14), dan mengganti `WindowManager.defaultDisplay` yang dilarang pada konteks service dengan `resources.displayMetrics`.
+            - **Perbaikan Tampilan Media di Browser / Perangkat Lain:** Sinkronisasi `GlFrameDispatcher` input surface dengan `CountDownLatch`, perbaikan header MJPEG `boundary=frame`, dan header CORS.
+            - **Crash Logger:** Menambahkan pencatat crash otomatis yang menyimpan jejak error ke `/sdcard/Download/virtualcam_crash.log`.
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
