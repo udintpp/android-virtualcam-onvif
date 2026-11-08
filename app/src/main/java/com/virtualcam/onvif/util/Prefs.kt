@@ -8,14 +8,20 @@ class Prefs(context: Context) {
         context.getSharedPreferences("virtualcam_prefs", Context.MODE_PRIVATE)
 
     companion object {
-        const val SOURCE_VIDEO = 0
-        const val SOURCE_SCREEN = 1
-        const val SOURCE_PATTERN = 2
+        const val SOURCE_CAMERA_BACK = 0
+        const val SOURCE_CAMERA_FRONT = 1
+        const val SOURCE_VIDEO = 2
+        const val SOURCE_SCREEN = 3
+        const val SOURCE_PATTERN = 4
     }
 
     var sourceMode: Int
-        get() = prefs.getInt("source_mode", SOURCE_VIDEO)
+        get() = prefs.getInt("source_mode", SOURCE_CAMERA_BACK)
         set(value) = prefs.edit().putInt("source_mode", value).apply()
+
+    var selectedCameraId: String?
+        get() = prefs.getString("selected_camera_id", null)
+        set(value) = prefs.edit().putString("selected_camera_id", value).apply()
 
     var videoUri: String?
         get() = prefs.getString("video_uri", null)

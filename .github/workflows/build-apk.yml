@@ -43,9 +43,13 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "VirtualCam ONVIF v1.0.0"
+          tag_name: v1.1.0
+          name: "VirtualCam ONVIF v1.1.0"
           body: |
+            ### 📷 VirtualCam ONVIF v1.1.0
+            - Menambahkan dukungan Kamera Nyata/Fisik (Kamera Belakang & Kamera Depan/Selfie).
+            - Memperbaiki Live Preview agar langsung menampilkan video MP4, layar, atau kamera yang dipilih.
+            - Dual Surface GL Frame Dispatcher untuk rendering simultan antara Live Preview dan RTSP/ONVIF Encoder.
             ### 📷 VirtualCam ONVIF for Android
             Aplikasi Virtual Camera untuk Android dengan fitur:
             - Terdeteksi sebagai kamera sistem oleh aplikasi lain (Intent Camera Chooser).

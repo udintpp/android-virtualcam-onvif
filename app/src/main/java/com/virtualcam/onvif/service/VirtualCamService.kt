@@ -5,7 +5,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
+import android.hardware.camera2.CameraCharacteristics
 import android.media.projection.MediaProjection
 import android.net.Uri
 import android.net.wifi.WifiManager
@@ -23,9 +23,11 @@ import com.virtualcam.onvif.encoder.H264Encoder
 import com.virtualcam.onvif.onvif.OnvifHttpServer
 import com.virtualcam.onvif.onvif.WsDiscoveryServer
 import com.virtualcam.onvif.rtsp.RtspServer
+import com.virtualcam.onvif.source.CameraSourceEngine
 import com.virtualcam.onvif.source.ScreenSourceEngine
 import com.virtualcam.onvif.source.TestPatternEngine
 import com.virtualcam.onvif.source.VideoSourceEngine
+import com.virtualcam.onvif.util.GlFrameDispatcher
 import com.virtualcam.onvif.util.NetworkUtils
 import com.virtualcam.onvif.util.Prefs
 
@@ -43,9 +45,20 @@ class VirtualCamService : Service() {
     private var onvifServer: OnvifHttpServer? = null
     private var wsDiscoveryServer: WsDiscoveryServer? = null
 
-    private lateinit var videoEngine: VideoSourceEngine
-    private lateinit var screenEngine: ScreenSourceEngine
-    private lateinit var testPatternEngine: TestPatternEngine
+    lateinit var cameraEngine: CameraSourceEngine
+        private set
+    lateinit var videoEngine: VideoSourceEngine
+        private set
+    lateinit var screenEngine: ScreenSourceEngine
+        private set
+    lateinit var testPatternEngine: TestPatternEngine
+        private set
+    lateinit var glDispatcher: GlFrameDispatcher
+        private set
+
+    private var currentPreviewSurface: Surface? = null
+    private var currentPreviewWidth = 1280
+    private var currentPreviewHeight = 720
 
     companion object {
         const val ACTION_START = "com.virtualcam.onvif.action.START"
@@ -70,9 +83,11 @@ class VirtualCamService : Service() {
         currentInstance = this
         prefs = Prefs(this)
 
+        cameraEngine = CameraSourceEngine(this)
         videoEngine = VideoSourceEngine(this)
         screenEngine = ScreenSourceEngine(this)
         testPatternEngine = TestPatternEngine()
+        glDispatcher = GlFrameDispatcher(prefs.width, prefs.height)
 
         acquireLocks()
     }
@@ -126,43 +141,89 @@ class VirtualCamService : Service() {
         // 4. Initialize WS-Discovery Server (UDP 3702)
         wsDiscoveryServer = WsDiscoveryServer(this, localIp, 8080).apply { start() }
 
-        // 5. Connect Video Source to Encoder Input Surface
+        // 5. Initialize Dual Surface GL Dispatcher
+        glDispatcher.start()
         val encoderSurface = h264Encoder?.inputSurface
         if (encoderSurface != null) {
-            attachSourceToSurface(encoderSurface, width, height, fps)
+            glDispatcher.setEncoderSurface(encoderSurface, width, height)
+        }
+        if (currentPreviewSurface != null && currentPreviewSurface!!.isValid) {
+            glDispatcher.setPreviewSurface(currentPreviewSurface, currentPreviewWidth, currentPreviewHeight)
         }
 
-        Log.d(tag, "All streaming services started on $localIp (RTSP: 8554, ONVIF: 8080)")
+        // 6. Connect Video Source to GL Dispatcher
+        startActiveSource()
+
+        Log.d(tag, "Streaming services active on $localIp (RTSP: 8554, ONVIF: 8080)")
     }
 
-    fun attachSourceToSurface(surface: Surface, width: Int, height: Int, fps: Int = 30) {
+    fun attachPreviewSurface(surface: Surface?, width: Int, height: Int) {
+        currentPreviewSurface = surface
+        currentPreviewWidth = width
+        currentPreviewHeight = height
+
+        glDispatcher.setPreviewSurface(surface, width, height)
+
+        if (isRunning) {
+            // If real camera, update camera targets
+            if (prefs.sourceMode == Prefs.SOURCE_CAMERA_BACK || prefs.sourceMode == Prefs.SOURCE_CAMERA_FRONT) {
+                val camSurfaces = listOfNotNull(surface, h264Encoder?.inputSurface)
+                cameraEngine.updateSurfaces(camSurfaces)
+            }
+        }
+    }
+
+    fun startActiveSource() {
+        val width = prefs.width
+        val height = prefs.height
+        val fps = prefs.fps
+        val glInput = glDispatcher.inputSurface
+        val encoderSurface = h264Encoder?.inputSurface
+
+        cameraEngine.stop()
+        videoEngine.stop()
+        screenEngine.stop()
+        testPatternEngine.stop()
+
         when (prefs.sourceMode) {
+            Prefs.SOURCE_CAMERA_BACK -> {
+                val camId = prefs.selectedCameraId
+                    ?: cameraEngine.getDefaultCameraId(CameraCharacteristics.LENS_FACING_BACK)
+                    ?: "0"
+                val surfaces = listOfNotNull(glInput ?: encoderSurface, currentPreviewSurface)
+                cameraEngine.start(camId, surfaces)
+            }
+            Prefs.SOURCE_CAMERA_FRONT -> {
+                val camId = prefs.selectedCameraId
+                    ?: cameraEngine.getDefaultCameraId(CameraCharacteristics.LENS_FACING_FRONT)
+                    ?: "1"
+                val surfaces = listOfNotNull(glInput ?: encoderSurface, currentPreviewSurface)
+                cameraEngine.start(camId, surfaces)
+            }
             Prefs.SOURCE_VIDEO -> {
-                screenEngine.stop()
-                testPatternEngine.stop()
                 val uriStr = prefs.videoUri
-                if (!uriStr.isNullOrEmpty()) {
-                    videoEngine.setSurface(surface)
+                val targetSurface = glInput ?: encoderSurface
+                if (!uriStr.isNullOrEmpty() && targetSurface != null) {
+                    videoEngine.setSurface(targetSurface)
                     videoEngine.start(Uri.parse(uriStr), prefs.isLooping)
-                } else {
-                    // Fallback to pattern if no video selected
-                    testPatternEngine.start(surface, width, height, fps)
+                } else if (targetSurface != null) {
+                    testPatternEngine.start(targetSurface, width, height, fps)
                 }
             }
             Prefs.SOURCE_SCREEN -> {
-                videoEngine.stop()
-                testPatternEngine.stop()
-                val projection = mediaProjection
-                if (projection != null) {
-                    screenEngine.start(projection, surface, width, height)
-                } else {
-                    testPatternEngine.start(surface, width, height, fps)
+                val proj = mediaProjection
+                val targetSurface = glInput ?: encoderSurface
+                if (proj != null && targetSurface != null) {
+                    screenEngine.start(proj, targetSurface, width, height)
+                } else if (targetSurface != null) {
+                    testPatternEngine.start(targetSurface, width, height, fps)
                 }
             }
             Prefs.SOURCE_PATTERN -> {
-                videoEngine.stop()
-                screenEngine.stop()
-                testPatternEngine.start(surface, width, height, fps)
+                val targetSurface = glInput ?: encoderSurface
+                if (targetSurface != null) {
+                    testPatternEngine.start(targetSurface, width, height, fps)
+                }
             }
         }
     }
@@ -171,9 +232,11 @@ class VirtualCamService : Service() {
         isRunning = false
         prefs.isStreaming = false
 
+        cameraEngine.stop()
         videoEngine.stop()
         screenEngine.stop()
         testPatternEngine.stop()
+        glDispatcher.stop()
 
         wsDiscoveryServer?.stop()
         wsDiscoveryServer = null
@@ -212,7 +275,7 @@ class VirtualCamService : Service() {
     private fun acquireLocks() {
         val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
         wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VirtualCam::WakeLock")?.apply {
-            acquire(12 * 60 * 60 * 1000L) // 12 hours timeout
+            acquire(12 * 60 * 60 * 1000L)
         }
 
         val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager

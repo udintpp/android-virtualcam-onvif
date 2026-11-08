@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
+import android.hardware.camera2.CameraCharacteristics
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -21,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.virtualcam.onvif.databinding.ActivityMainBinding
 import com.virtualcam.onvif.service.VirtualCamService
+import com.virtualcam.onvif.source.CameraSourceEngine
 import com.virtualcam.onvif.source.TestPatternEngine
 import com.virtualcam.onvif.source.VideoSourceEngine
 import com.virtualcam.onvif.util.NetworkUtils
@@ -31,8 +33,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: Prefs
     private var previewSurface: Surface? = null
-    private var videoEngine: VideoSourceEngine? = null
-    private var testPatternEngine: TestPatternEngine? = null
+
+    private var localCameraEngine: CameraSourceEngine? = null
+    private var localVideoEngine: VideoSourceEngine? = null
+    private var localTestPatternEngine: TestPatternEngine? = null
 
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -41,19 +45,20 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             VirtualCamService.mediaProjection = projectionManager.getMediaProjection(result.resultCode, result.data!!)
             startStreamService()
+            restartPreview()
         } else {
             Toast.makeText(this, "Izin tangkap layar ditolak", Toast.LENGTH_SHORT).show()
             binding.rbPattern.isChecked = true
             prefs.sourceMode = Prefs.SOURCE_PATTERN
+            restartPreview()
         }
     }
 
     private val videoPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.GetContent()
+        ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
             try {
-                // Persist read permission across reboots
                 contentResolver.takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -69,7 +74,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        // Permissions handled
+        if (permissions[Manifest.permission.CAMERA] == true) {
+            restartPreview()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,8 +85,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         setContentView(binding.root)
 
         prefs = Prefs(this)
-        videoEngine = VideoSourceEngine(this)
-        testPatternEngine = TestPatternEngine()
+        localCameraEngine = CameraSourceEngine(this)
+        localVideoEngine = VideoSourceEngine(this)
+        localTestPatternEngine = TestPatternEngine()
 
         requestAppPermissions()
         setupUI()
@@ -90,6 +98,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         super.onResume()
         updateNetworkInfo()
         updateServiceStateUI()
+        if (previewSurface != null && previewSurface!!.isValid) {
+            restartPreview()
+        }
     }
 
     private fun setupUI() {
@@ -97,9 +108,26 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         // Restore Source Mode
         when (prefs.sourceMode) {
-            Prefs.SOURCE_VIDEO -> binding.rbVideo.isChecked = true
-            Prefs.SOURCE_SCREEN -> binding.rbScreen.isChecked = true
-            Prefs.SOURCE_PATTERN -> binding.rbPattern.isChecked = true
+            Prefs.SOURCE_CAMERA_BACK -> {
+                binding.rbCameraBack.isChecked = true
+                binding.layoutVideoPicker.visibility = android.view.View.GONE
+            }
+            Prefs.SOURCE_CAMERA_FRONT -> {
+                binding.rbCameraFront.isChecked = true
+                binding.layoutVideoPicker.visibility = android.view.View.GONE
+            }
+            Prefs.SOURCE_VIDEO -> {
+                binding.rbVideo.isChecked = true
+                binding.layoutVideoPicker.visibility = android.view.View.VISIBLE
+            }
+            Prefs.SOURCE_SCREEN -> {
+                binding.rbScreen.isChecked = true
+                binding.layoutVideoPicker.visibility = android.view.View.GONE
+            }
+            Prefs.SOURCE_PATTERN -> {
+                binding.rbPattern.isChecked = true
+                binding.layoutVideoPicker.visibility = android.view.View.GONE
+            }
         }
 
         binding.switchLoop.isChecked = prefs.isLooping
@@ -119,24 +147,43 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     private fun setupListeners() {
         binding.rgSource.setOnCheckedChangeListener { _, checkedId ->
             when (checkedId) {
+                R.id.rbCameraBack -> {
+                    prefs.sourceMode = Prefs.SOURCE_CAMERA_BACK
+                    binding.layoutVideoPicker.visibility = android.view.View.GONE
+                    ensureCameraPermissionAndRestart()
+                }
+                R.id.rbCameraFront -> {
+                    prefs.sourceMode = Prefs.SOURCE_CAMERA_FRONT
+                    binding.layoutVideoPicker.visibility = android.view.View.GONE
+                    ensureCameraPermissionAndRestart()
+                }
                 R.id.rbVideo -> {
                     prefs.sourceMode = Prefs.SOURCE_VIDEO
                     binding.layoutVideoPicker.visibility = android.view.View.VISIBLE
+                    restartPreview()
                 }
                 R.id.rbScreen -> {
                     prefs.sourceMode = Prefs.SOURCE_SCREEN
                     binding.layoutVideoPicker.visibility = android.view.View.GONE
+                    if (VirtualCamService.mediaProjection == null) {
+                        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                        screenCaptureLauncher.launch(projectionManager.createScreenCaptureIntent())
+                    } else {
+                        restartPreview()
+                    }
                 }
                 R.id.rbPattern -> {
                     prefs.sourceMode = Prefs.SOURCE_PATTERN
                     binding.layoutVideoPicker.visibility = android.view.View.GONE
+                    restartPreview()
                 }
             }
-            restartPreview()
+            // If service is running, update active source dynamically
+            VirtualCamService.currentInstance?.startActiveSource()
         }
 
         binding.btnSelectVideo.setOnClickListener {
-            videoPickerLauncher.launch("video/*")
+            videoPickerLauncher.launch(arrayOf("video/*"))
         }
 
         binding.switchLoop.setOnCheckedChangeListener { _, isChecked ->
@@ -148,7 +195,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             if (VirtualCamService.isRunning) {
                 stopStreamService()
             } else {
-                if (prefs.sourceMode == Prefs.SOURCE_SCREEN) {
+                if (prefs.sourceMode == Prefs.SOURCE_SCREEN && VirtualCamService.mediaProjection == null) {
                     val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                     screenCaptureLauncher.launch(projectionManager.createScreenCaptureIntent())
                 } else {
@@ -189,6 +236,14 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
     }
 
+    private fun ensureCameraPermissionAndRestart() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
+        } else {
+            restartPreview()
+        }
+    }
+
     private fun startStreamService() {
         val serviceIntent = Intent(this, VirtualCamService::class.java).apply {
             action = VirtualCamService.ACTION_START
@@ -207,6 +262,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
         startService(serviceIntent)
         updateServiceStateUI()
+        restartPreview()
     }
 
     private fun updateServiceStateUI() {
@@ -240,35 +296,54 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         Toast.makeText(this, getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
     }
 
-    private fun restartPreview() {
+    fun restartPreview() {
         val surface = previewSurface ?: return
+        if (!surface.isValid) return
+
         val width = binding.previewTextureView.width.let { if (it <= 0) 1280 else it }
         val height = binding.previewTextureView.height.let { if (it <= 0) 720 else it }
 
-        videoEngine?.stop()
-        testPatternEngine?.stop()
+        val service = VirtualCamService.currentInstance
+        if (service != null && VirtualCamService.isRunning) {
+            // Service is active: attach preview surface to service's unified dispatcher
+            service.attachPreviewSurface(surface, width, height)
+            return
+        }
+
+        // Service is not running: use local preview engines
+        localCameraEngine?.stop()
+        localVideoEngine?.stop()
+        localTestPatternEngine?.stop()
 
         when (prefs.sourceMode) {
+            Prefs.SOURCE_CAMERA_BACK -> {
+                val camId = localCameraEngine?.getDefaultCameraId(CameraCharacteristics.LENS_FACING_BACK) ?: "0"
+                localCameraEngine?.start(camId, listOf(surface))
+            }
+            Prefs.SOURCE_CAMERA_FRONT -> {
+                val camId = localCameraEngine?.getDefaultCameraId(CameraCharacteristics.LENS_FACING_FRONT) ?: "1"
+                localCameraEngine?.start(camId, listOf(surface))
+            }
             Prefs.SOURCE_VIDEO -> {
                 val uriStr = prefs.videoUri
                 if (!uriStr.isNullOrEmpty()) {
-                    videoEngine?.setSurface(surface)
-                    videoEngine?.start(Uri.parse(uriStr), prefs.isLooping)
+                    localVideoEngine?.setSurface(surface)
+                    localVideoEngine?.start(Uri.parse(uriStr), prefs.isLooping)
                 } else {
-                    testPatternEngine?.start(surface, width, height)
+                    localTestPatternEngine?.start(surface, width, height)
                 }
             }
             Prefs.SOURCE_SCREEN -> {
-                // If service is running, it streams screen; otherwise show test pattern in preview
                 val proj = VirtualCamService.mediaProjection
                 if (proj != null) {
-                    VirtualCamService.currentInstance?.attachSourceToSurface(surface, width, height)
+                    val se = localVideoEngine // fallback
+                    localTestPatternEngine?.start(surface, width, height)
                 } else {
-                    testPatternEngine?.start(surface, width, height)
+                    localTestPatternEngine?.start(surface, width, height)
                 }
             }
             Prefs.SOURCE_PATTERN -> {
-                testPatternEngine?.start(surface, width, height)
+                localTestPatternEngine?.start(surface, width, height)
             }
         }
     }
@@ -278,14 +353,20 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         restartPreview()
     }
 
-    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+        restartPreview()
+    }
+
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-        videoEngine?.stop()
-        testPatternEngine?.stop()
+        localCameraEngine?.stop()
+        localVideoEngine?.stop()
+        localTestPatternEngine?.stop()
+        VirtualCamService.currentInstance?.attachPreviewSurface(null, 0, 0)
         previewSurface?.release()
         previewSurface = null
         return true
     }
+
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
 
     private fun requestAppPermissions() {
@@ -307,8 +388,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     override fun onDestroy() {
-        videoEngine?.stop()
-        testPatternEngine?.stop()
+        localCameraEngine?.stop()
+        localVideoEngine?.stop()
+        localTestPatternEngine?.stop()
         previewSurface?.release()
         previewSurface = null
         super.onDestroy()

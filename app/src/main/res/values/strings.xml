@@ -8,9 +8,14 @@
     <string name="onvif_url_label">ONVIF Device URL</string>
     <string name="btn_start_stream">Mulai Streaming &amp; ONVIF</string>
     <string name="btn_stop_stream">Hentikan Streaming</string>
-    <string name="source_video">File Video (MP4)</string>
-    <string name="source_screen">Tampilan Layar (Screen Mirror)</string>
-    <string name="source_test_pattern">Test Pattern (SMPTE Bars)</string>
+
+    <!-- Source selections -->
+    <string name="source_camera_back">📷 Kamera Belakang (Kamera Nyata)</string>
+    <string name="source_camera_front">🤳 Kamera Depan (Kamera Nyata)</string>
+    <string name="source_video">🎬 File Video (MP4)</string>
+    <string name="source_screen">📱 Tampilan Layar (Screen Mirror)</string>
+    <string name="source_test_pattern">📺 Test Pattern (SMPTE Bars)</string>
+
     <string name="btn_select_video">Pilih Video MP4</string>
     <string name="no_video_selected">Belum ada video dipilih</string>
     <string name="loop_video">Putar Ulang Otomatis (Loop)</string>

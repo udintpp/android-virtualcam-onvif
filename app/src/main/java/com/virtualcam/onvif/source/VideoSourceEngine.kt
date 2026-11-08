@@ -5,6 +5,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.util.Log
 import android.view.Surface
+import java.io.File
 
 class VideoSourceEngine(private val context: Context) {
 
@@ -17,7 +18,9 @@ class VideoSourceEngine(private val context: Context) {
     fun setSurface(surface: Surface?) {
         currentSurface = surface
         try {
-            mediaPlayer?.setSurface(surface)
+            if (surface != null && surface.isValid) {
+                mediaPlayer?.setSurface(surface)
+            }
         } catch (e: Exception) {
             Log.e(tag, "Error setting surface on MediaPlayer", e)
         }
@@ -34,14 +37,36 @@ class VideoSourceEngine(private val context: Context) {
         }
 
         try {
+            val surface = currentSurface
             mediaPlayer = MediaPlayer().apply {
-                setDataSource(context, uri)
-                isLooping = looping
-                setVolume(0f, 0f) // Keep muted for virtual camera background stream
-                currentSurface?.let { setSurface(it) }
+                if (surface != null && surface.isValid) {
+                    setSurface(surface)
+                }
+
+                // Robust data source setup: try FileDescriptor for content:// URIs
+                if ("content".equals(uri.scheme, ignoreCase = true)) {
+                    val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                    if (pfd != null) {
+                        setDataSource(pfd.fileDescriptor)
+                    } else {
+                        setDataSource(context, uri)
+                    }
+                } else if ("file".equals(uri.scheme, ignoreCase = true)) {
+                    val path = uri.path
+                    if (path != null && File(path).exists()) {
+                        setDataSource(path)
+                    } else {
+                        setDataSource(context, uri)
+                    }
+                } else {
+                    setDataSource(context, uri)
+                }
+
+                this.isLooping = looping
+                setVolume(0f, 0f) // Keep muted for background camera feed
 
                 setOnPreparedListener { mp ->
-                    Log.d(tag, "MediaPlayer prepared, starting playback")
+                    Log.d(tag, "MediaPlayer prepared (${mp.videoWidth}x${mp.videoHeight}), starting playback")
                     mp.start()
                 }
 
@@ -60,7 +85,7 @@ class VideoSourceEngine(private val context: Context) {
                 prepareAsync()
             }
         } catch (e: Exception) {
-            Log.e(tag, "Failed to start MediaPlayer for URI: $uri", e)
+            Log.e(tag, "Failed to initialize MediaPlayer for URI: $uri", e)
         }
     }
 

@@ -103,6 +103,116 @@
                 </FrameLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Video Source Selection Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/surface"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="2dp"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Pilih Sumber Kamera / Media"
+                        android:textColor="@color/accent"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <RadioGroup
+                        android:id="@+id/rgSource"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp">
+
+                        <RadioButton
+                            android:id="@+id/rbCameraBack"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:checked="true"
+                            android:text="@string/source_camera_back"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbCameraFront"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/source_camera_front"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbVideo"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/source_video"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbScreen"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/source_screen"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbPattern"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/source_test_pattern"
+                            android:textColor="@color/text_primary" />
+                    </RadioGroup>
+
+                    <!-- Video File Picker Section -->
+                    <LinearLayout
+                        android:id="@+id/layoutVideoPicker"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnSelectVideo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:backgroundTint="@color/surface_variant"
+                            android:text="@string/btn_select_video"
+                            android:textColor="@color/text_primary"
+                            app:icon="@drawable/ic_video"
+                            app:iconTint="@color/accent" />
+
+                        <TextView
+                            android:id="@+id/tvSelectedVideo"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:ellipsize="middle"
+                            android:maxLines="1"
+                            android:text="@string/no_video_selected"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchLoop"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:checked="true"
+                            android:text="@string/loop_video"
+                            android:textColor="@color/text_primary" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Network & Stream Info Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
@@ -241,101 +351,6 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="Copy ONVIF"
                             android:src="@drawable/ic_copy" />
-                    </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Video Source Selection Card -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                app:cardBackgroundColor="@color/surface"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="2dp"
-                app:strokeColor="@color/card_stroke"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Sumber Video Kamera Virtual"
-                        android:textColor="@color/accent"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-
-                    <RadioGroup
-                        android:id="@+id/rgSource"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp">
-
-                        <RadioButton
-                            android:id="@+id/rbVideo"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:checked="true"
-                            android:text="@string/source_video"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbScreen"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/source_screen"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbPattern"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/source_test_pattern"
-                            android:textColor="@color/text_primary" />
-                    </RadioGroup>
-
-                    <!-- Video File Picker Section -->
-                    <LinearLayout
-                        android:id="@+id/layoutVideoPicker"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:orientation="vertical">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btnSelectVideo"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:backgroundTint="@color/surface_variant"
-                            android:text="@string/btn_select_video"
-                            android:textColor="@color/text_primary"
-                            app:icon="@drawable/ic_video"
-                            app:iconTint="@color/accent" />
-
-                        <TextView
-                            android:id="@+id/tvSelectedVideo"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:ellipsize="middle"
-                            android:maxLines="1"
-                            android:text="@string/no_video_selected"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.switchmaterial.SwitchMaterial
-                            android:id="@+id/switchLoop"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:checked="true"
-                            android:text="@string/loop_video"
-                            android:textColor="@color/text_primary" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
