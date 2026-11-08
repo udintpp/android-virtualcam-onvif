@@ -44,14 +44,15 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3.0
-          name: "VirtualCam ONVIF v1.3.0"
+          tag_name: v1.3.1
+          name: "VirtualCam ONVIF v1.3.1"
           body: |
-            ### 📷 VirtualCam ONVIF v1.3.0 - Perbaikan Crash & Tampilan Layar
-            - **Perbaikan Force Close saat Mulai Streaming:** Mengisolasi Foreground Service lifecycle dengan tipe dinamis (`camera`, `mediaProjection`, `mediaPlayback`) serta pengaturan kompatibilitas Android 14+ (`targetSdk = 33`).
-            - **Perbaikan Force Close saat Transmisi Layar:** Memperbaiki aliran otorisasi `MediaProjectionManager`, menambahkan `MediaProjection.Callback` (wajib di Android 14), dan mengganti `WindowManager.defaultDisplay` yang dilarang pada konteks service dengan `resources.displayMetrics`.
-            - **Perbaikan Tampilan Media di Browser / Perangkat Lain:** Sinkronisasi `GlFrameDispatcher` input surface dengan `CountDownLatch`, perbaikan header MJPEG `boundary=frame`, dan header CORS.
-            - **Crash Logger:** Menambahkan pencatat crash otomatis yang menyimpan jejak error ke `/sdcard/Download/virtualcam_crash.log`.
+            ### 📷 VirtualCam ONVIF v1.3.1 - Perbaikan Layar Gelap (Black Screen Fix)
+            - **Perbaikan Bentrok Kamera (Camera Hardware Collision):** Menghentikan `localCameraEngine` di MainActivity sebelum memulai `VirtualCamService` sehingga kamera fisik tidak terkunci (`ERROR_CAMERA_IN_USE`) dan dapat diambil alih dengan mulus oleh layanan streaming.
+            - **Sinkronisasi Preview Layar HP:** Menghubungkan surface preview lokal ke `GlFrameDispatcher` saat streaming aktif, sehingga kamera/video tetap tampil bergerak di layar aplikasi.
+            - **Perbaikan Timestamp MediaCodec Encoder (`eglPresentationTimeANDROID`):** Menambahkan pencatatan timestamp nano-detik sebelum `eglSwapBuffers`, menyelesaikan masalah frame yang dibuang oleh encoder H.264 sehingga RTSP (VLC / OBS) menampilkan video live yang jernih dan bergerak.
+            - **Perbaikan Pemutaran Video SAF:** Menggunakan resolver `setDataSource(context, uri)` standar Android untuk file MP4 agar tidak mengalami error I/O `0x80000000`.
+            - **Generator Pola Tes Mandiri OpenGL:** Pola warna SMPTE Color Bars kini dirender langsung di OpenGL ES tanpa `lockCanvas` ilegal.
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false

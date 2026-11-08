@@ -85,9 +85,18 @@ class CameraSourceEngine(private val context: Context) {
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
-                    Log.e(tag, "CameraDevice error: $error")
-                    camera.close()
+                    Log.e(tag, "CameraDevice error: $error on camera $cameraId")
+                    try { camera.close() } catch (ignored: Exception) {}
                     currentCameraDevice = null
+                    if (error == CameraDevice.StateCallback.ERROR_CAMERA_IN_USE ||
+                        error == CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE) {
+                        cameraHandler?.postDelayed({
+                            if (activeCameraId == cameraId && currentCameraDevice == null) {
+                                Log.d(tag, "Retrying openCamera $cameraId after CAMERA_IN_USE...")
+                                start(cameraId, surfaces)
+                            }
+                        }, 500)
+                    }
                 }
             }, cameraHandler)
         } catch (e: Exception) {

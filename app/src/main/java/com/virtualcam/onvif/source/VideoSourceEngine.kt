@@ -43,27 +43,18 @@ class VideoSourceEngine(private val context: Context) {
                     setSurface(surface)
                 }
 
-                // Robust data source setup: try FileDescriptor for content:// URIs
-                if ("content".equals(uri.scheme, ignoreCase = true)) {
-                    val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-                    if (pfd != null) {
-                        setDataSource(pfd.fileDescriptor)
-                    } else {
-                        setDataSource(context, uri)
-                    }
-                } else if ("file".equals(uri.scheme, ignoreCase = true)) {
-                    val path = uri.path
-                    if (path != null && File(path).exists()) {
-                        setDataSource(path)
-                    } else {
-                        setDataSource(context, uri)
-                    }
-                } else {
+                // Standard Android content and file resolution
+                try {
                     setDataSource(context, uri)
+                } catch (e: Exception) {
+                    Log.w(tag, "Standard setDataSource failed, falling back to openFileDescriptor", e)
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        setDataSource(pfd.fileDescriptor, 0, pfd.statSize)
+                    }
                 }
 
                 this.isLooping = looping
-                setVolume(0f, 0f) // Keep muted for background camera feed
+                setVolume(0f, 0f) // Keep muted for camera feed
 
                 setOnPreparedListener { mp ->
                     Log.d(tag, "MediaPlayer prepared (${mp.videoWidth}x${mp.videoHeight}), starting playback")
@@ -72,7 +63,7 @@ class VideoSourceEngine(private val context: Context) {
 
                 setOnErrorListener { _, what, extra ->
                     Log.e(tag, "MediaPlayer error: what=$what, extra=$extra")
-                    true
+                    false
                 }
 
                 setOnCompletionListener { mp ->

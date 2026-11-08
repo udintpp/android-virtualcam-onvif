@@ -27,6 +27,7 @@ class GlFrameDispatcher(
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
     private var eglConfig: EGLConfig? = null
+    private var pbufferSurface: EGLSurface = EGL14.EGL_NO_SURFACE
 
     private var previewEglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
     private var encoderEglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
@@ -42,6 +43,19 @@ class GlFrameDispatcher(
     private var surfaceTexture: SurfaceTexture? = null
     var inputSurface: Surface? = null
         private set
+
+    // Test Pattern Generator Mode
+    @Volatile
+    private var isTestPatternMode = false
+    private var patternTick = 0
+    private val patternRunnable = object : Runnable {
+        override fun run() {
+            if (isTestPatternMode && renderHandler != null) {
+                drawPatternFrame()
+                renderHandler?.postDelayed(this, 33) // ~30 FPS
+            }
+        }
+    }
 
     // MJPEG Web Streaming capture
     @Volatile
@@ -119,7 +133,11 @@ class GlFrameDispatcher(
                 surfaceTexture = SurfaceTexture(textureId).apply {
                     setDefaultBufferSize(defaultWidth, defaultHeight)
                     setOnFrameAvailableListener({
-                        renderHandler?.post { drawFrames() }
+                        renderHandler?.post {
+                            if (!isTestPatternMode) {
+                                drawFrames()
+                            }
+                        }
                     }, renderHandler)
                 }
                 inputSurface = Surface(surfaceTexture)
@@ -134,6 +152,18 @@ class GlFrameDispatcher(
         try {
             initLatch.await(2, java.util.concurrent.TimeUnit.SECONDS)
         } catch (ignored: Exception) {}
+    }
+
+    fun setTestPatternMode(enabled: Boolean) {
+        renderHandler?.post {
+            isTestPatternMode = enabled
+            if (enabled) {
+                renderHandler?.removeCallbacks(patternRunnable)
+                renderHandler?.post(patternRunnable)
+            } else {
+                renderHandler?.removeCallbacks(patternRunnable)
+            }
+        }
     }
 
     fun setPreviewSurface(surface: Surface?, width: Int = defaultWidth, height: Int = defaultHeight) {
@@ -180,12 +210,27 @@ class GlFrameDispatcher(
 
     private fun drawFrames() {
         val st = surfaceTexture ?: return
+
+        // Ensure an active surface is current BEFORE calling updateTexImage
+        val currentTargetSurface = when {
+            encoderEglSurface != EGL14.EGL_NO_SURFACE -> encoderEglSurface
+            previewEglSurface != EGL14.EGL_NO_SURFACE -> previewEglSurface
+            pbufferSurface != EGL14.EGL_NO_SURFACE -> pbufferSurface
+            else -> EGL14.EGL_NO_SURFACE
+        }
+        if (currentTargetSurface == EGL14.EGL_NO_SURFACE) return
+
+        EGL14.eglMakeCurrent(eglDisplay, currentTargetSurface, currentTargetSurface, eglContext)
+
         try {
             st.updateTexImage()
             st.getTransformMatrix(transformMatrix)
         } catch (e: Exception) {
+            Log.e(tag, "Error during updateTexImage", e)
             return
         }
+
+        val frameTimeNs = st.timestamp
 
         // 1. Render to Preview
         if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewSurface?.isValid == true) {
@@ -204,8 +249,67 @@ class GlFrameDispatcher(
             if (previewEglSurface == EGL14.EGL_NO_SURFACE) {
                 captureMjpegFrameIfNeeded(encoderWidth, encoderHeight)
             }
+            EGLExt.eglPresentationTimeANDROID(eglDisplay, encoderEglSurface, frameTimeNs)
             EGL14.eglSwapBuffers(eglDisplay, encoderEglSurface)
         }
+    }
+
+    private fun drawPatternFrame() {
+        patternTick++
+        val nowNs = System.nanoTime()
+
+        // 1. Render to Preview
+        if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewSurface?.isValid == true) {
+            EGL14.eglMakeCurrent(eglDisplay, previewEglSurface, previewEglSurface, eglContext)
+            GLES20.glViewport(0, 0, previewWidth, previewHeight)
+            renderColorBars(previewWidth, previewHeight, patternTick)
+            captureMjpegFrameIfNeeded(previewWidth, previewHeight)
+            EGL14.eglSwapBuffers(eglDisplay, previewEglSurface)
+        }
+
+        // 2. Render to Encoder
+        if (encoderEglSurface != EGL14.EGL_NO_SURFACE && encoderSurface?.isValid == true) {
+            EGL14.eglMakeCurrent(eglDisplay, encoderEglSurface, encoderEglSurface, eglContext)
+            GLES20.glViewport(0, 0, encoderWidth, encoderHeight)
+            renderColorBars(encoderWidth, encoderHeight, patternTick)
+            if (previewEglSurface == EGL14.EGL_NO_SURFACE) {
+                captureMjpegFrameIfNeeded(encoderWidth, encoderHeight)
+            }
+            EGLExt.eglPresentationTimeANDROID(eglDisplay, encoderEglSurface, nowNs)
+            EGL14.eglSwapBuffers(eglDisplay, encoderEglSurface)
+        }
+    }
+
+    private fun renderColorBars(width: Int, height: Int, tick: Int) {
+        GLES20.glDisable(GLES20.GL_SCISSOR_TEST)
+        GLES20.glClearColor(0f, 0f, 0f, 1f)
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+
+        GLES20.glEnable(GLES20.GL_SCISSOR_TEST)
+        val barColors = arrayOf(
+            floatArrayOf(0.75f, 0.75f, 0.75f), // White/Grey
+            floatArrayOf(0.75f, 0.75f, 0f),     // Yellow
+            floatArrayOf(0f, 0.75f, 0.75f),     // Cyan
+            floatArrayOf(0f, 0.75f, 0f),        // Green
+            floatArrayOf(0.75f, 0f, 0.75f),     // Magenta
+            floatArrayOf(0.75f, 0f, 0f),        // Red
+            floatArrayOf(0f, 0f, 0.75f)         // Blue
+        )
+        val barW = width / barColors.size
+        for (i in barColors.indices) {
+            val c = barColors[i]
+            GLES20.glScissor(i * barW, (height * 0.25).toInt(), barW + 1, (height * 0.75).toInt())
+            GLES20.glClearColor(c[0], c[1], c[2], 1f)
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        }
+
+        // Moving box at bottom
+        val boxX = ((tick * 8) % width)
+        GLES20.glScissor(boxX, (height * 0.05).toInt(), 60, (height * 0.15).toInt())
+        GLES20.glClearColor(1f, 1f, 1f, 1f)
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+
+        GLES20.glDisable(GLES20.GL_SCISSOR_TEST)
     }
 
     private fun captureMjpegFrameIfNeeded(w: Int, h: Int) {
@@ -216,34 +320,35 @@ class GlFrameDispatcher(
         lastMjpegCaptureTime = now
         isCompressing = true
 
-        val captureW = if (w > 640) 640 else w
-        val captureH = if (h > 360) 360 else h
-
-        if (pixelBuffer == null || pixelBuffer?.capacity() != captureW * captureH * 4) {
-            pixelBuffer = ByteBuffer.allocateDirect(captureW * captureH * 4).order(ByteOrder.nativeOrder())
+        if (pixelBuffer == null || pixelBuffer?.capacity() != w * h * 4) {
+            pixelBuffer = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder())
         }
         val buf = pixelBuffer ?: return
         buf.position(0)
-        GLES20.glReadPixels(0, 0, captureW, captureH, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
+        GLES20.glReadPixels(0, 0, w, h, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
 
         mjpegExecutor.execute {
             try {
-                val bmp = Bitmap.createBitmap(captureW, captureH, Bitmap.Config.ARGB_8888)
+                val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                 buf.position(0)
                 bmp.copyPixelsFromBuffer(buf)
 
-                // Flip vertical because OpenGL origin is bottom-left
-                val matrix = Matrix().apply { postScale(1f, -1f) }
-                val flipped = Bitmap.createBitmap(bmp, 0, 0, captureW, captureH, matrix, true)
+                // Downsample to 640x360 and flip vertically (OpenGL Y-inversion)
+                val targetW = 640
+                val targetH = 360
+                val matrix = Matrix().apply {
+                    postScale(targetW.toFloat() / w, -targetH.toFloat() / h)
+                }
+                val finalBmp = Bitmap.createBitmap(bmp, 0, 0, w, h, matrix, true)
 
                 val stream = ByteArrayOutputStream()
-                flipped.compress(Bitmap.CompressFormat.JPEG, 75, stream)
+                finalBmp.compress(Bitmap.CompressFormat.JPEG, 75, stream)
                 latestJpegBytes = stream.toByteArray()
 
                 bmp.recycle()
-                if (flipped != bmp) flipped.recycle()
+                if (finalBmp != bmp) finalBmp.recycle()
             } catch (e: Exception) {
-                // ignore
+                Log.e(tag, "Error compressing MJPEG", e)
             } finally {
                 isCompressing = false
             }
@@ -310,10 +415,10 @@ class GlFrameDispatcher(
         )
         eglContext = EGL14.eglCreateContext(eglDisplay, eglConfig, EGL14.EGL_NO_CONTEXT, contextAttribs, 0)
 
-        // Make dummy current to init shaders
+        // Make dummy pbuffer current to init shaders and act as fallback surface
         val pbufferAttribs = intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE)
-        val pbuffer = EGL14.eglCreatePbufferSurface(eglDisplay, eglConfig, pbufferAttribs, 0)
-        EGL14.eglMakeCurrent(eglDisplay, pbuffer, pbuffer, eglContext)
+        pbufferSurface = EGL14.eglCreatePbufferSurface(eglDisplay, eglConfig, pbufferAttribs, 0)
+        EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
     }
 
     private fun initGl() {
@@ -353,7 +458,9 @@ class GlFrameDispatcher(
 
     fun stop() {
         hasActiveWebClients = false
+        isTestPatternMode = false
         val handler = renderHandler
+        handler?.removeCallbacks(patternRunnable)
         handler?.post {
             if (previewEglSurface != EGL14.EGL_NO_SURFACE) {
                 EGL14.eglDestroySurface(eglDisplay, previewEglSurface)
@@ -362,6 +469,10 @@ class GlFrameDispatcher(
             if (encoderEglSurface != EGL14.EGL_NO_SURFACE) {
                 EGL14.eglDestroySurface(eglDisplay, encoderEglSurface)
                 encoderEglSurface = EGL14.EGL_NO_SURFACE
+            }
+            if (pbufferSurface != EGL14.EGL_NO_SURFACE) {
+                EGL14.eglDestroySurface(eglDisplay, pbufferSurface)
+                pbufferSurface = EGL14.EGL_NO_SURFACE
             }
             if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
                 EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)

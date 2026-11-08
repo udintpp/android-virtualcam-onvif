@@ -27,7 +27,6 @@ import com.virtualcam.onvif.onvif.WsDiscoveryServer
 import com.virtualcam.onvif.rtsp.RtspServer
 import com.virtualcam.onvif.source.CameraSourceEngine
 import com.virtualcam.onvif.source.ScreenSourceEngine
-import com.virtualcam.onvif.source.TestPatternEngine
 import com.virtualcam.onvif.source.VideoSourceEngine
 import com.virtualcam.onvif.util.GlFrameDispatcher
 import com.virtualcam.onvif.util.NetworkUtils
@@ -53,8 +52,6 @@ class VirtualCamService : Service() {
         private set
     lateinit var screenEngine: ScreenSourceEngine
         private set
-    lateinit var testPatternEngine: TestPatternEngine
-        private set
     lateinit var glDispatcher: GlFrameDispatcher
         private set
 
@@ -75,6 +72,10 @@ class VirtualCamService : Service() {
         var currentInstance: VirtualCamService? = null
             private set
         var mediaProjection: MediaProjection? = null
+
+        var pendingPreviewSurface: Surface? = null
+        var pendingPreviewWidth: Int = 1280
+        var pendingPreviewHeight: Int = 720
     }
 
     inner class LocalBinder : Binder() {
@@ -91,7 +92,6 @@ class VirtualCamService : Service() {
         cameraEngine = CameraSourceEngine(this)
         videoEngine = VideoSourceEngine(this)
         screenEngine = ScreenSourceEngine(this)
-        testPatternEngine = TestPatternEngine()
         glDispatcher = GlFrameDispatcher(prefs.width, prefs.height)
 
         acquireLocks()
@@ -238,8 +238,12 @@ class VirtualCamService : Service() {
             if (encoderSurface != null) {
                 glDispatcher.setEncoderSurface(encoderSurface, width, height)
             }
-            if (currentPreviewSurface != null && currentPreviewSurface!!.isValid) {
-                glDispatcher.setPreviewSurface(currentPreviewSurface, currentPreviewWidth, currentPreviewHeight)
+            val initialPreview = pendingPreviewSurface ?: currentPreviewSurface
+            if (initialPreview != null && initialPreview.isValid) {
+                currentPreviewSurface = initialPreview
+                currentPreviewWidth = pendingPreviewWidth
+                currentPreviewHeight = pendingPreviewHeight
+                glDispatcher.setPreviewSurface(initialPreview, currentPreviewWidth, currentPreviewHeight)
             }
         } catch (e: Exception) {
             Log.e(tag, "Error starting GL Dispatcher", e)
@@ -263,13 +267,6 @@ class VirtualCamService : Service() {
         try {
             glDispatcher.setPreviewSurface(surface, width, height)
         } catch (ignored: Exception) {}
-
-        if (isRunning) {
-            if (prefs.sourceMode == Prefs.SOURCE_CAMERA_BACK || prefs.sourceMode == Prefs.SOURCE_CAMERA_FRONT) {
-                val camSurfaces = listOfNotNull(glDispatcher.inputSurface ?: h264Encoder?.inputSurface, surface)
-                cameraEngine.updateSurfaces(camSurfaces)
-            }
-        }
     }
 
     fun startActiveSource() {
@@ -278,56 +275,54 @@ class VirtualCamService : Service() {
         val fps = prefs.fps
         val glInput = glDispatcher.inputSurface
         val encoderSurface = h264Encoder?.inputSurface
+        val targetSurface = glInput ?: encoderSurface
 
         cameraEngine.stop()
         videoEngine.stop()
         screenEngine.stop()
-        testPatternEngine.stop()
+        glDispatcher.setTestPatternMode(false)
 
         when (prefs.sourceMode) {
             Prefs.SOURCE_CAMERA_BACK -> {
                 val camId = prefs.selectedCameraId
                     ?: cameraEngine.getDefaultCameraId(CameraCharacteristics.LENS_FACING_BACK)
                     ?: "0"
-                val surfaces = listOfNotNull(glInput ?: encoderSurface, currentPreviewSurface)
-                cameraEngine.start(camId, surfaces)
+                if (targetSurface != null) {
+                    cameraEngine.start(camId, listOf(targetSurface))
+                }
             }
             Prefs.SOURCE_CAMERA_FRONT -> {
                 val camId = prefs.selectedCameraId
                     ?: cameraEngine.getDefaultCameraId(CameraCharacteristics.LENS_FACING_FRONT)
                     ?: "1"
-                val surfaces = listOfNotNull(glInput ?: encoderSurface, currentPreviewSurface)
-                cameraEngine.start(camId, surfaces)
+                if (targetSurface != null) {
+                    cameraEngine.start(camId, listOf(targetSurface))
+                }
             }
             Prefs.SOURCE_VIDEO -> {
                 val uriStr = prefs.videoUri
-                val targetSurface = glInput ?: encoderSurface
                 if (!uriStr.isNullOrEmpty() && targetSurface != null) {
                     videoEngine.setSurface(targetSurface)
                     videoEngine.start(Uri.parse(uriStr), prefs.isLooping)
-                } else if (targetSurface != null) {
-                    testPatternEngine.start(targetSurface, width, height, fps)
+                } else {
+                    glDispatcher.setTestPatternMode(true)
                 }
             }
             Prefs.SOURCE_SCREEN -> {
                 val proj = mediaProjection
-                val targetSurface = glInput ?: encoderSurface
                 if (proj != null && targetSurface != null) {
                     try {
                         screenEngine.start(proj, targetSurface, width, height)
                     } catch (e: Exception) {
                         Log.e(tag, "Error in screenEngine.start, falling back to pattern", e)
-                        testPatternEngine.start(targetSurface, width, height, fps)
+                        glDispatcher.setTestPatternMode(true)
                     }
-                } else if (targetSurface != null) {
-                    testPatternEngine.start(targetSurface, width, height, fps)
+                } else {
+                    glDispatcher.setTestPatternMode(true)
                 }
             }
             Prefs.SOURCE_PATTERN -> {
-                val targetSurface = glInput ?: encoderSurface
-                if (targetSurface != null) {
-                    testPatternEngine.start(targetSurface, width, height, fps)
-                }
+                glDispatcher.setTestPatternMode(true)
             }
         }
     }
@@ -339,7 +334,6 @@ class VirtualCamService : Service() {
         try { cameraEngine.stop() } catch (ignored: Exception) {}
         try { videoEngine.stop() } catch (ignored: Exception) {}
         try { screenEngine.stop() } catch (ignored: Exception) {}
-        try { testPatternEngine.stop() } catch (ignored: Exception) {}
         try { glDispatcher.stop() } catch (ignored: Exception) {}
 
         try { wsDiscoveryServer?.stop() } catch (ignored: Exception) {}
@@ -353,6 +347,9 @@ class VirtualCamService : Service() {
 
         try { h264Encoder?.stop() } catch (ignored: Exception) {}
         h264Encoder = null
+
+        currentPreviewSurface = null
+        pendingPreviewSurface = null
 
         releaseLocks()
         try {

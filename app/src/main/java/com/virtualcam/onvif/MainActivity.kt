@@ -42,6 +42,16 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            localCameraEngine?.stop()
+            localVideoEngine?.stop()
+            localTestPatternEngine?.stop()
+
+            val width = binding.previewTextureView.width.let { if (it <= 0) 1280 else it }
+            val height = binding.previewTextureView.height.let { if (it <= 0) 720 else it }
+            VirtualCamService.pendingPreviewSurface = previewSurface
+            VirtualCamService.pendingPreviewWidth = width
+            VirtualCamService.pendingPreviewHeight = height
+
             val serviceIntent = Intent(this, VirtualCamService::class.java).apply {
                 action = VirtualCamService.ACTION_START_SCREEN
                 putExtra(VirtualCamService.EXTRA_RESULT_CODE, result.resultCode)
@@ -54,7 +64,6 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             }
             binding.previewTextureView.postDelayed({
                 updateServiceStateUI()
-                restartPreview()
             }, 300)
         } else {
             Toast.makeText(this, "Izin tangkap layar ditolak", Toast.LENGTH_SHORT).show()
@@ -259,6 +268,17 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     }
 
     private fun startStreamService() {
+        // Stop local engines so camera / media hardware is immediately freed for VirtualCamService
+        localCameraEngine?.stop()
+        localVideoEngine?.stop()
+        localTestPatternEngine?.stop()
+
+        val width = binding.previewTextureView.width.let { if (it <= 0) 1280 else it }
+        val height = binding.previewTextureView.height.let { if (it <= 0) 720 else it }
+        VirtualCamService.pendingPreviewSurface = previewSurface
+        VirtualCamService.pendingPreviewWidth = width
+        VirtualCamService.pendingPreviewHeight = height
+
         val serviceIntent = Intent(this, VirtualCamService::class.java).apply {
             action = VirtualCamService.ACTION_START
         }
@@ -276,7 +296,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         }
         startService(serviceIntent)
         updateServiceStateUI()
-        restartPreview()
+
+        binding.previewTextureView.postDelayed({
+            restartPreview()
+        }, 300)
     }
 
     private fun updateServiceStateUI() {
@@ -365,10 +388,15 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
     override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
         previewSurface = Surface(surfaceTexture)
+        VirtualCamService.pendingPreviewSurface = previewSurface
+        VirtualCamService.pendingPreviewWidth = width
+        VirtualCamService.pendingPreviewHeight = height
         restartPreview()
     }
 
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+        VirtualCamService.pendingPreviewWidth = width
+        VirtualCamService.pendingPreviewHeight = height
         restartPreview()
     }
 
@@ -377,6 +405,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         localVideoEngine?.stop()
         localTestPatternEngine?.stop()
         VirtualCamService.currentInstance?.attachPreviewSurface(null, 0, 0)
+        VirtualCamService.pendingPreviewSurface = null
         previewSurface?.release()
         previewSurface = null
         return true
