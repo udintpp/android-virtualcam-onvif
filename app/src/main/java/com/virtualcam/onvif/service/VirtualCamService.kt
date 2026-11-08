@@ -135,7 +135,8 @@ class VirtualCamService : Service() {
             port = 8080,
             rtspPort = 8554,
             getDimensions = { Pair(width, height) },
-            getLatestSnapshot = { null }
+            getLatestJpeg = { glDispatcher.latestJpegBytes },
+            setWebActive = { glDispatcher.hasActiveWebClients = it }
         ).apply { start() }
 
         // 4. Initialize WS-Discovery Server (UDP 3702)

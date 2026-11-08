@@ -44,13 +44,13 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0
-          name: "VirtualCam ONVIF v1.1.0"
+          tag_name: v1.2.0
+          name: "VirtualCam ONVIF v1.2.0"
           body: |
-            ### 📷 VirtualCam ONVIF v1.1.0
-            - Menambahkan dukungan Kamera Nyata/Fisik (Kamera Belakang & Kamera Depan/Selfie).
-            - Memperbaiki Live Preview agar langsung menampilkan video MP4, layar, atau kamera yang dipilih.
-            - Dual Surface GL Frame Dispatcher untuk rendering simultan antara Live Preview dan RTSP/ONVIF Encoder.
+            ### 📷 VirtualCam ONVIF v1.2.0
+            - **Web Browser Live Video Stream (MJPEG):** Sekarang saat diakses dari browser (Chrome, Edge, Safari di tablet/laptop/PC) pada port 8080 (`http://<IP>:8080/`), video live langsung tampil bergerak di halaman web!
+            - **Perbaikan Rute Web:** Mengakses alamat root `/`, `/video`, maupun URL ONVIF melalui web browser akan menampilkan web player interaktif, bukan lagi layar putih kosong.
+            - Menambahkan snapshot downloader langsung (`/snapshot.jpg`).
             ### 📷 VirtualCam ONVIF for Android
             Aplikasi Virtual Camera untuk Android dengan fitur:
             - Terdeteksi sebagai kamera sistem oleh aplikasi lain (Intent Camera Chooser).

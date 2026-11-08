@@ -212,6 +212,10 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
             copyToClipboard(binding.tvOnvifUrl.text.toString())
         }
 
+        binding.btnCopyWeb.setOnClickListener {
+            copyToClipboard(binding.tvWebStreamUrl.text.toString())
+        }
+
         binding.btnTestIntent.setOnClickListener {
             val intent = Intent(this, VirtualCameraCaptureActivity::class.java)
             startActivity(intent)
@@ -287,6 +291,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         binding.tvIpAddress.text = ip
         binding.tvRtspUrl.text = "rtsp://$ip:8554/live"
         binding.tvOnvifUrl.text = "http://$ip:8080/onvif/device_service"
+        binding.tvWebStreamUrl.text = "http://$ip:8080/"
     }
 
     private fun copyToClipboard(text: String) {

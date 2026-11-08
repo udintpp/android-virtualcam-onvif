@@ -1,14 +1,18 @@
 package com.virtualcam.onvif.util
 
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.opengl.*
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.util.concurrent.Executors
 
 class GlFrameDispatcher(
     private val defaultWidth: Int = 1280,
@@ -38,6 +42,20 @@ class GlFrameDispatcher(
     private var surfaceTexture: SurfaceTexture? = null
     var inputSurface: Surface? = null
         private set
+
+    // MJPEG Web Streaming capture
+    @Volatile
+    var latestJpegBytes: ByteArray? = null
+        private set
+    @Volatile
+    var hasActiveWebClients: Boolean = false
+
+    private val mjpegExecutor = Executors.newSingleThreadExecutor()
+    @Volatile
+    private var isCompressing = false
+    private var lastMjpegCaptureTime = 0L
+
+    private var pixelBuffer: ByteBuffer? = null
 
     private var program = 0
     private var aPositionLoc = 0
@@ -158,20 +176,66 @@ class GlFrameDispatcher(
             return
         }
 
-        // Render to Preview
+        // 1. Render to Preview
         if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewSurface?.isValid == true) {
             EGL14.eglMakeCurrent(eglDisplay, previewEglSurface, previewEglSurface, eglContext)
             GLES20.glViewport(0, 0, previewWidth, previewHeight)
             drawQuad()
+            captureMjpegFrameIfNeeded(previewWidth, previewHeight)
             EGL14.eglSwapBuffers(eglDisplay, previewEglSurface)
         }
 
-        // Render to Encoder
+        // 2. Render to Encoder
         if (encoderEglSurface != EGL14.EGL_NO_SURFACE && encoderSurface?.isValid == true) {
             EGL14.eglMakeCurrent(eglDisplay, encoderEglSurface, encoderEglSurface, eglContext)
             GLES20.glViewport(0, 0, encoderWidth, encoderHeight)
             drawQuad()
+            if (previewEglSurface == EGL14.EGL_NO_SURFACE) {
+                captureMjpegFrameIfNeeded(encoderWidth, encoderHeight)
+            }
             EGL14.eglSwapBuffers(eglDisplay, encoderEglSurface)
+        }
+    }
+
+    private fun captureMjpegFrameIfNeeded(w: Int, h: Int) {
+        val now = System.currentTimeMillis()
+        if (!hasActiveWebClients || isCompressing || (now - lastMjpegCaptureTime < 45L)) {
+            return
+        }
+        lastMjpegCaptureTime = now
+        isCompressing = true
+
+        val captureW = if (w > 640) 640 else w
+        val captureH = if (h > 360) 360 else h
+
+        if (pixelBuffer == null || pixelBuffer?.capacity() != captureW * captureH * 4) {
+            pixelBuffer = ByteBuffer.allocateDirect(captureW * captureH * 4).order(ByteOrder.nativeOrder())
+        }
+        val buf = pixelBuffer ?: return
+        buf.position(0)
+        GLES20.glReadPixels(0, 0, captureW, captureH, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
+
+        mjpegExecutor.execute {
+            try {
+                val bmp = Bitmap.createBitmap(captureW, captureH, Bitmap.Config.ARGB_8888)
+                buf.position(0)
+                bmp.copyPixelsFromBuffer(buf)
+
+                // Flip vertical because OpenGL origin is bottom-left
+                val matrix = Matrix().apply { postScale(1f, -1f) }
+                val flipped = Bitmap.createBitmap(bmp, 0, 0, captureW, captureH, matrix, true)
+
+                val stream = ByteArrayOutputStream()
+                flipped.compress(Bitmap.CompressFormat.JPEG, 75, stream)
+                latestJpegBytes = stream.toByteArray()
+
+                bmp.recycle()
+                if (flipped != bmp) flipped.recycle()
+            } catch (e: Exception) {
+                // ignore
+            } finally {
+                isCompressing = false
+            }
         }
     }
 
@@ -266,6 +330,7 @@ class GlFrameDispatcher(
     }
 
     fun stop() {
+        hasActiveWebClients = false
         val handler = renderHandler
         handler?.post {
             if (previewEglSurface != EGL14.EGL_NO_SURFACE) {
