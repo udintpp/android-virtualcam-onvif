@@ -39,6 +39,23 @@ class GlFrameDispatcher(
     private var encoderWidth = defaultWidth
     private var encoderHeight = defaultHeight
 
+    // Source geometry and aspect ratio correction
+    @Volatile
+    var sourceWidth: Int = defaultWidth
+        private set
+    @Volatile
+    var sourceHeight: Int = defaultHeight
+        private set
+    @Volatile
+    var sourceRotation: Int = 0
+        private set
+    @Volatile
+    var sourceMirror: Boolean = false
+        private set
+    @Volatile
+    var scaleMode: Int = 0 // 0 = FIT, 1 = CROP
+        private set
+
     private var textureId = 0
     private var surfaceTexture: SurfaceTexture? = null
     var inputSurface: Surface? = null
@@ -74,10 +91,12 @@ class GlFrameDispatcher(
     private var program = 0
     private var aPositionLoc = 0
     private var aTextureCoordLoc = 0
+    private var uMvpMatrixLoc = 0
     private var uTexMatrixLoc = 0
     private var uTextureLoc = 0
 
     private val transformMatrix = FloatArray(16)
+    private val mvpMatrix = FloatArray(16)
 
     // Full screen quad vertices
     private val vertexBuffer: FloatBuffer = ByteBuffer.allocateDirect(8 * 4)
@@ -97,10 +116,11 @@ class GlFrameDispatcher(
     private val vertexShaderCode = """
         attribute vec4 aPosition;
         attribute vec4 aTextureCoord;
+        uniform mat4 uMvpMatrix;
         uniform mat4 uTexMatrix;
         varying vec2 vTextureCoord;
         void main() {
-            gl_Position = aPosition;
+            gl_Position = uMvpMatrix * aPosition;
             vTextureCoord = (uTexMatrix * aTextureCoord).xy;
         }
     """.trimIndent()
@@ -152,6 +172,15 @@ class GlFrameDispatcher(
         try {
             initLatch.await(2, java.util.concurrent.TimeUnit.SECONDS)
         } catch (ignored: Exception) {}
+    }
+
+    fun setSourceGeometry(width: Int, height: Int, rotation: Int, mirror: Boolean, mode: Int = 0) {
+        sourceWidth = if (width > 0) width else defaultWidth
+        sourceHeight = if (height > 0) height else defaultHeight
+        sourceRotation = ((rotation % 360) + 360) % 360
+        sourceMirror = mirror
+        scaleMode = mode
+        Log.d(tag, "Source geometry updated: ${sourceWidth}x${sourceHeight}, rot=$sourceRotation, mirror=$sourceMirror, mode=$scaleMode")
     }
 
     fun setTestPatternMode(enabled: Boolean) {
@@ -208,6 +237,51 @@ class GlFrameDispatcher(
         }
     }
 
+    private fun computeMvpMatrix(targetW: Int, targetH: Int) {
+        android.opengl.Matrix.setIdentityM(mvpMatrix, 0)
+
+        val srcW = if (sourceWidth > 0) sourceWidth else targetW
+        val srcH = if (sourceHeight > 0) sourceHeight else targetH
+        val rot = ((sourceRotation % 360) + 360) % 360
+
+        // Effective dimensions of content in upright orientation:
+        val effW = if (rot == 90 || rot == 270) srcH else srcW
+        val effH = if (rot == 90 || rot == 270) srcW else srcH
+
+        val contentAspect = effW.toFloat() / effH.toFloat()
+        val viewAspect = targetW.toFloat() / targetH.toFloat()
+
+        var scaleX = 1.0f
+        var scaleY = 1.0f
+
+        if (scaleMode == 1) { // CROP: fill viewport, maintain proportions
+            if (contentAspect > viewAspect) {
+                scaleX = contentAspect / viewAspect
+            } else {
+                scaleY = viewAspect / contentAspect
+            }
+        } else { // FIT: whole frame visible, maintain proportions (letterbox/pillarbox)
+            if (contentAspect > viewAspect) {
+                scaleY = viewAspect / contentAspect
+            } else {
+                scaleX = contentAspect / viewAspect
+            }
+        }
+
+        // 1. Scale quad in target viewport
+        android.opengl.Matrix.scaleM(mvpMatrix, 0, scaleX, scaleY, 1.0f)
+
+        // 2. Rotate to upright orientation
+        if (rot != 0) {
+            android.opengl.Matrix.rotateM(mvpMatrix, 0, rot.toFloat(), 0f, 0f, 1f)
+        }
+
+        // 3. Mirror horizontally if front selfie camera
+        if (sourceMirror) {
+            android.opengl.Matrix.scaleM(mvpMatrix, 0, -1.0f, 1.0f, 1.0f)
+        }
+    }
+
     private fun drawFrames() {
         val st = surfaceTexture ?: return
 
@@ -232,20 +306,20 @@ class GlFrameDispatcher(
 
         val frameTimeNs = st.timestamp
 
-        // 1. Render to Preview
+        // 1. Render to Preview (Phone Display)
         if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewSurface?.isValid == true) {
             EGL14.eglMakeCurrent(eglDisplay, previewEglSurface, previewEglSurface, eglContext)
             GLES20.glViewport(0, 0, previewWidth, previewHeight)
-            drawQuad()
+            drawQuad(previewWidth, previewHeight)
             captureMjpegFrameIfNeeded(previewWidth, previewHeight)
             EGL14.eglSwapBuffers(eglDisplay, previewEglSurface)
         }
 
-        // 2. Render to Encoder
+        // 2. Render to Encoder (H.264 RTSP)
         if (encoderEglSurface != EGL14.EGL_NO_SURFACE && encoderSurface?.isValid == true) {
             EGL14.eglMakeCurrent(eglDisplay, encoderEglSurface, encoderEglSurface, eglContext)
             GLES20.glViewport(0, 0, encoderWidth, encoderHeight)
-            drawQuad()
+            drawQuad(encoderWidth, encoderHeight)
             if (previewEglSurface == EGL14.EGL_NO_SURFACE) {
                 captureMjpegFrameIfNeeded(encoderWidth, encoderHeight)
             }
@@ -355,7 +429,7 @@ class GlFrameDispatcher(
         }
     }
 
-    private fun drawQuad() {
+    private fun drawQuad(targetW: Int, targetH: Int) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         GLES20.glUseProgram(program)
 
@@ -363,6 +437,8 @@ class GlFrameDispatcher(
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
         GLES20.glUniform1i(uTextureLoc, 0)
 
+        computeMvpMatrix(targetW, targetH)
+        GLES20.glUniformMatrix4fv(uMvpMatrixLoc, 1, false, mvpMatrix, 0)
         GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, transformMatrix, 0)
 
         GLES20.glEnableVertexAttribArray(aPositionLoc)
@@ -433,6 +509,7 @@ class GlFrameDispatcher(
 
         aPositionLoc = GLES20.glGetAttribLocation(program, "aPosition")
         aTextureCoordLoc = GLES20.glGetAttribLocation(program, "aTextureCoord")
+        uMvpMatrixLoc = GLES20.glGetUniformLocation(program, "uMvpMatrix")
         uTexMatrixLoc = GLES20.glGetUniformLocation(program, "uTexMatrix")
         uTextureLoc = GLES20.glGetUniformLocation(program, "uTexture")
     }

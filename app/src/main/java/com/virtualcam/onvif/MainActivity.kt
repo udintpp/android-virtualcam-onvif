@@ -105,7 +105,15 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         prefs = Prefs(this)
         localCameraEngine = CameraSourceEngine(this)
-        localVideoEngine = VideoSourceEngine(this)
+        localVideoEngine = VideoSourceEngine(this).apply {
+            onVideoSizeChanged = { _, _ ->
+                if (!VirtualCamService.isRunning && prefs.sourceMode == Prefs.SOURCE_VIDEO) {
+                    binding.previewTextureView.post {
+                        updateTextureViewTransform(binding.previewTextureView.width, binding.previewTextureView.height)
+                    }
+                }
+            }
+        }
         localTestPatternEngine = TestPatternEngine()
 
         requestAppPermissions()
@@ -161,6 +169,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
 
         updateNetworkInfo()
         updateServiceStateUI()
+        updateAdjustmentButtonsUI()
     }
 
     private fun setupListeners() {
@@ -238,6 +247,36 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         binding.btnTestIntent.setOnClickListener {
             val intent = Intent(this, VirtualCameraCaptureActivity::class.java)
             startActivity(intent)
+        }
+
+        binding.btnRotate.setOnClickListener {
+            prefs.rotationDegrees = (prefs.rotationDegrees + 90) % 360
+            updateAdjustmentButtonsUI()
+            if (VirtualCamService.isRunning) {
+                VirtualCamService.currentInstance?.updateGeometry()
+            } else {
+                updateTextureViewTransform(binding.previewTextureView.width, binding.previewTextureView.height)
+            }
+        }
+
+        binding.btnMirror.setOnClickListener {
+            prefs.isMirror = !prefs.isMirror
+            updateAdjustmentButtonsUI()
+            if (VirtualCamService.isRunning) {
+                VirtualCamService.currentInstance?.updateGeometry()
+            } else {
+                updateTextureViewTransform(binding.previewTextureView.width, binding.previewTextureView.height)
+            }
+        }
+
+        binding.btnScaleMode.setOnClickListener {
+            prefs.scaleMode = if (prefs.scaleMode == Prefs.SCALE_MODE_FIT) Prefs.SCALE_MODE_CROP else Prefs.SCALE_MODE_FIT
+            updateAdjustmentButtonsUI()
+            if (VirtualCamService.isRunning) {
+                VirtualCamService.currentInstance?.updateGeometry()
+            } else {
+                updateTextureViewTransform(binding.previewTextureView.width, binding.previewTextureView.height)
+            }
         }
 
         binding.switchFloating.setOnCheckedChangeListener { _, isChecked ->
@@ -334,6 +373,94 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         Toast.makeText(this, getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
     }
 
+    private fun updateAdjustmentButtonsUI() {
+        binding.btnRotate.text = "🔄 ${prefs.rotationDegrees}°"
+        binding.btnMirror.text = if (prefs.isMirror) "🪞 Cermin (On)" else "🪞 Cermin (Off)"
+        binding.btnScaleMode.text = if (prefs.scaleMode == Prefs.SCALE_MODE_CROP) "📐 Crop Penuh" else "📐 Pas Rasio (Fit)"
+    }
+
+    private fun updateTextureViewTransform(viewWidth: Int, viewHeight: Int) {
+        if (viewWidth <= 0 || viewHeight <= 0) return
+        val matrix = android.graphics.Matrix()
+
+        if (VirtualCamService.isRunning) {
+            binding.previewTextureView.setTransform(matrix)
+            return
+        }
+
+        var srcW = 1280f
+        var srcH = 720f
+        var naturalRot = 0f
+        var mirror = prefs.isMirror
+
+        when (prefs.sourceMode) {
+            Prefs.SOURCE_CAMERA_FRONT -> {
+                srcW = 1280f
+                srcH = 720f
+                naturalRot = 270f
+                mirror = !prefs.isMirror
+            }
+            Prefs.SOURCE_CAMERA_BACK -> {
+                srcW = 1280f
+                srcH = 720f
+                naturalRot = 90f
+            }
+            Prefs.SOURCE_VIDEO -> {
+                val vw = localVideoEngine?.currentVideoWidth ?: 0
+                val vh = localVideoEngine?.currentVideoHeight ?: 0
+                if (vw > 0 && vh > 0) {
+                    srcW = vw.toFloat()
+                    srcH = vh.toFloat()
+                }
+                naturalRot = 0f
+            }
+            Prefs.SOURCE_SCREEN -> {
+                val dm = resources.displayMetrics
+                srcW = dm.widthPixels.toFloat()
+                srcH = dm.heightPixels.toFloat()
+                naturalRot = 0f
+            }
+            Prefs.SOURCE_PATTERN -> {
+                srcW = 1280f
+                srcH = 720f
+                naturalRot = 0f
+            }
+        }
+
+        val totalRot = ((naturalRot + prefs.rotationDegrees) % 360f + 360f) % 360f
+        val effW = if (totalRot == 90f || totalRot == 270f) srcH else srcW
+        val effH = if (totalRot == 90f || totalRot == 270f) srcW else srcH
+
+        val contentAspect = effW / effH
+        val viewAspect = viewWidth.toFloat() / viewHeight.toFloat()
+
+        var scaleX = 1.0f
+        var scaleY = 1.0f
+
+        if (prefs.scaleMode == Prefs.SCALE_MODE_CROP) {
+            if (contentAspect > viewAspect) {
+                scaleX = contentAspect / viewAspect
+            } else {
+                scaleY = viewAspect / contentAspect
+            }
+        } else {
+            if (contentAspect > viewAspect) {
+                scaleY = viewAspect / contentAspect
+            } else {
+                scaleX = contentAspect / viewAspect
+            }
+        }
+
+        val centerX = viewWidth / 2f
+        val centerY = viewHeight / 2f
+
+        matrix.postRotate(totalRot, centerX, centerY)
+        val finalScaleX = if (mirror) -scaleX else scaleX
+        matrix.postScale(finalScaleX, scaleY, centerX, centerY)
+
+        binding.previewTextureView.setTransform(matrix)
+    }
+
     fun restartPreview() {
         val surface = previewSurface ?: return
         if (!surface.isValid) return
@@ -344,6 +471,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         val service = VirtualCamService.currentInstance
         if (service != null && VirtualCamService.isRunning) {
             // Service is active: attach preview surface to service's unified dispatcher
+            binding.previewTextureView.setTransform(android.graphics.Matrix())
             service.attachPreviewSurface(surface, width, height)
             return
         }
@@ -352,6 +480,7 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
         localCameraEngine?.stop()
         localVideoEngine?.stop()
         localTestPatternEngine?.stop()
+        updateTextureViewTransform(width, height)
 
         when (prefs.sourceMode) {
             Prefs.SOURCE_CAMERA_BACK -> {
@@ -397,6 +526,9 @@ class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener {
     override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
         VirtualCamService.pendingPreviewWidth = width
         VirtualCamService.pendingPreviewHeight = height
+        if (!VirtualCamService.isRunning) {
+            updateTextureViewTransform(width, height)
+        }
         restartPreview()
     }
 

@@ -15,6 +15,12 @@ class VideoSourceEngine(private val context: Context) {
     private var videoUri: Uri? = null
     private var isLooping: Boolean = true
 
+    var currentVideoWidth: Int = 0
+        private set
+    var currentVideoHeight: Int = 0
+        private set
+    var onVideoSizeChanged: ((width: Int, height: Int) -> Unit)? = null
+
     fun setSurface(surface: Surface?) {
         currentSurface = surface
         try {
@@ -57,7 +63,10 @@ class VideoSourceEngine(private val context: Context) {
                 setVolume(0f, 0f) // Keep muted for camera feed
 
                 setOnPreparedListener { mp ->
+                    currentVideoWidth = mp.videoWidth
+                    currentVideoHeight = mp.videoHeight
                     Log.d(tag, "MediaPlayer prepared (${mp.videoWidth}x${mp.videoHeight}), starting playback")
+                    onVideoSizeChanged?.invoke(mp.videoWidth, mp.videoHeight)
                     mp.start()
                 }
 

@@ -44,15 +44,17 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3.1
-          name: "VirtualCam ONVIF v1.3.1"
+          tag_name: v1.3.2
+          name: "VirtualCam ONVIF v1.3.2"
           body: |
-            ### 📷 VirtualCam ONVIF v1.3.1 - Perbaikan Layar Gelap (Black Screen Fix)
-            - **Perbaikan Bentrok Kamera (Camera Hardware Collision):** Menghentikan `localCameraEngine` di MainActivity sebelum memulai `VirtualCamService` sehingga kamera fisik tidak terkunci (`ERROR_CAMERA_IN_USE`) dan dapat diambil alih dengan mulus oleh layanan streaming.
-            - **Sinkronisasi Preview Layar HP:** Menghubungkan surface preview lokal ke `GlFrameDispatcher` saat streaming aktif, sehingga kamera/video tetap tampil bergerak di layar aplikasi.
-            - **Perbaikan Timestamp MediaCodec Encoder (`eglPresentationTimeANDROID`):** Menambahkan pencatatan timestamp nano-detik sebelum `eglSwapBuffers`, menyelesaikan masalah frame yang dibuang oleh encoder H.264 sehingga RTSP (VLC / OBS) menampilkan video live yang jernih dan bergerak.
-            - **Perbaikan Pemutaran Video SAF:** Menggunakan resolver `setDataSource(context, uri)` standar Android untuk file MP4 agar tidak mengalami error I/O `0x80000000`.
-            - **Generator Pola Tes Mandiri OpenGL:** Pola warna SMPTE Color Bars kini dirender langsung di OpenGL ES tanpa `lockCanvas` ilegal.
+            ### 📷 VirtualCam ONVIF v1.3.2 - Perbaikan Aspek Rasio, Orientasi & Kontrol Rotasi/Cermin
+            - **Anti-Distorsi Aspek Rasio (Fix Tarik / Pres):** Menambahkan perhitungan matriks MVP (Model-View-Projection) di shader OpenGL ES (`GlFrameDispatcher`) untuk menjaga proporsi asli video dan kamera tanpa melar atau gepeng.
+            - **Orientasi Sensor Tegak Lurus (Upright Orientation):** Sensor kamera depan (270°) dan belakang (90°) kini dikoreksi secara otomatis sehingga wajah tampil tegak normal (tidak miring 90° ke samping).
+            - **Tombol Kontrol Interaktif di Layar:**
+              - 🔄 **Rotasi (0°, 90°, 180°, 270°):** Putar orientasi kamera/video secara instan langsung saat live streaming.
+              - 🪞 **Cermin (Mirror On / Off):** Aktifkan atau matikan mode cermin selfie sesuai kenyamanan.
+              - 📐 **Mode Skala (Fit Rasio Asli / Crop Layar Penuh):** Pilih tampilan letterbox berbingkai hitam atau crop memenuhi layar.
+            - **Deteksi Otomatis Dimensi Video MP4:** Menyesuaikan aspek rasio file video (16:9 landscape, 9:16 portrait, atau 4:3) secara otomatis.
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false

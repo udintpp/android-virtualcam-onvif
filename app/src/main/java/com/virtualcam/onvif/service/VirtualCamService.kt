@@ -90,7 +90,19 @@ class VirtualCamService : Service() {
         prefs = Prefs(this)
 
         cameraEngine = CameraSourceEngine(this)
-        videoEngine = VideoSourceEngine(this)
+        videoEngine = VideoSourceEngine(this).apply {
+            onVideoSizeChanged = { w, h ->
+                if (prefs.sourceMode == Prefs.SOURCE_VIDEO) {
+                    glDispatcher.setSourceGeometry(
+                        width = w,
+                        height = h,
+                        rotation = prefs.rotationDegrees,
+                        mirror = prefs.isMirror,
+                        mode = prefs.scaleMode
+                    )
+                }
+            }
+        }
         screenEngine = ScreenSourceEngine(this)
         glDispatcher = GlFrameDispatcher(prefs.width, prefs.height)
 
@@ -269,6 +281,59 @@ class VirtualCamService : Service() {
         } catch (ignored: Exception) {}
     }
 
+    fun updateGeometry() {
+        when (prefs.sourceMode) {
+            Prefs.SOURCE_CAMERA_BACK -> {
+                glDispatcher.setSourceGeometry(
+                    width = 1280,
+                    height = 720,
+                    rotation = 90 + prefs.rotationDegrees,
+                    mirror = prefs.isMirror,
+                    mode = prefs.scaleMode
+                )
+            }
+            Prefs.SOURCE_CAMERA_FRONT -> {
+                glDispatcher.setSourceGeometry(
+                    width = 1280,
+                    height = 720,
+                    rotation = 270 + prefs.rotationDegrees,
+                    mirror = !prefs.isMirror, // Default front camera is mirrored
+                    mode = prefs.scaleMode
+                )
+            }
+            Prefs.SOURCE_VIDEO -> {
+                val vw = videoEngine.currentVideoWidth.let { if (it > 0) it else prefs.width }
+                val vh = videoEngine.currentVideoHeight.let { if (it > 0) it else prefs.height }
+                glDispatcher.setSourceGeometry(
+                    width = vw,
+                    height = vh,
+                    rotation = prefs.rotationDegrees,
+                    mirror = prefs.isMirror,
+                    mode = prefs.scaleMode
+                )
+            }
+            Prefs.SOURCE_SCREEN -> {
+                val dm = resources.displayMetrics
+                glDispatcher.setSourceGeometry(
+                    width = dm.widthPixels,
+                    height = dm.heightPixels,
+                    rotation = prefs.rotationDegrees,
+                    mirror = prefs.isMirror,
+                    mode = prefs.scaleMode
+                )
+            }
+            Prefs.SOURCE_PATTERN -> {
+                glDispatcher.setSourceGeometry(
+                    width = 1280,
+                    height = 720,
+                    rotation = prefs.rotationDegrees,
+                    mirror = prefs.isMirror,
+                    mode = prefs.scaleMode
+                )
+            }
+        }
+    }
+
     fun startActiveSource() {
         val width = prefs.width
         val height = prefs.height
@@ -281,6 +346,7 @@ class VirtualCamService : Service() {
         videoEngine.stop()
         screenEngine.stop()
         glDispatcher.setTestPatternMode(false)
+        updateGeometry()
 
         when (prefs.sourceMode) {
             Prefs.SOURCE_CAMERA_BACK -> {

@@ -13,6 +13,9 @@ class Prefs(context: Context) {
         const val SOURCE_VIDEO = 2
         const val SOURCE_SCREEN = 3
         const val SOURCE_PATTERN = 4
+
+        const val SCALE_MODE_FIT = 0
+        const val SCALE_MODE_CROP = 1
     }
 
     var sourceMode: Int
@@ -54,4 +57,16 @@ class Prefs(context: Context) {
     var isStreaming: Boolean
         get() = prefs.getBoolean("is_streaming", false)
         set(value) = prefs.edit().putBoolean("is_streaming", value).apply()
+
+    var rotationDegrees: Int
+        get() = prefs.getInt("rotation_degrees", 0)
+        set(value) = prefs.edit().putInt("rotation_degrees", value).apply()
+
+    var isMirror: Boolean
+        get() = prefs.getBoolean("is_mirror", false)
+        set(value) = prefs.edit().putBoolean("is_mirror", value).apply()
+
+    var scaleMode: Int
+        get() = prefs.getInt("scale_mode", SCALE_MODE_FIT)
+        set(value) = prefs.edit().putInt("scale_mode", value).apply()
 }

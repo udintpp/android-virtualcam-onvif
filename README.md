@@ -11,12 +11,19 @@ Aplikasi **Android Virtual Camera** & **ONVIF/RTSP Server** yang memungkinkan po
    - **Mode Hook LSPosed / Xposed / LSPatch (Untuk Aplikasi Panggilan Langsung):** Dilengkapi modul Xposed bawaan (`CameraHook.kt`) untuk menyuntikkan video virtual langsung ke aplikasi yang membuka hardware kamera tanpa intent (seperti WhatsApp Video Call, Zoom, Google Meet, TikTok, dan Google Chrome).
    - **Floating Controller Window:** Jendela preview mengambang (*Picture-in-Picture*) yang dapat digeser di atas aplikasi lain saat sedang melakukan video call.
 
-2. **Dua Pilihan Sumber Media:**
-   - **File Video MP4 Lokal:** Pilih file video dari galeri/memori internal, otomatis berputar terus menerus (*seamless loop*).
+2. **Multi-Pilihan Sumber Media:**
+   - **Kamera Nyata Fisik (Depan & Belakang):** Akses langsung kamera fisik perangkat dengan koreksi orientasi otomatis (sensor depan 270° dan belakang 90° sehingga gambar selalu tegak normal, tidak miring).
+   - **File Video MP4 Lokal:** Pilih file video dari galeri/memori internal, otomatis berputar terus menerus (*seamless loop*) dengan pendeteksian aspek rasio asli (16:9, 9:16, 4:3).
    - **Tampilan Layar (Screen Mirror):** Menggunakan Android `MediaProjection` API untuk menangkap tampilan layar ponsel secara real-time (game, emulator, browser, presentasi) dan menyiarkannya sebagai feed kamera.
    - **Test Pattern SMPTE:** Pola uji warna standar TV dengan jam digital real-time dan animasi kotak bergerak untuk verifikasi instan.
 
-3. **Akses Jaringan IP (ONVIF & RTSP):**
+3. **Kontrol Interaktif & Anti-Distorsi Aspek Rasio (OpenGL ES):**
+   - **Anti-Distorsi (No Stretch):** Matriks MVP shader OpenGL mencegah gambar tertarik atau gepeng.
+   - 🔄 **Rotasi Fleksibel:** Putar 0°, 90°, 180°, atau 270° secara langsung.
+   - 🪞 **Mode Cermin:** Toggle cermin horizontal untuk selfie atau video.
+   - 📐 **Mode Skala:** Pilih Fit (rasio asli dengan letterbox) atau Crop (isi layar penuh).
+
+4. **Akses Jaringan IP (ONVIF & RTSP):**
    - **WS-Discovery Server (UDP 3702):** Terdeteksi otomatis oleh aplikasi *ONVIF Device Manager (ODM)*, NVR CCTV, Synology Surveillance Station, Blue Iris, Shinobi, dan iSpy.
    - **ONVIF SOAP HTTP Server (Port 8080):** Menyediakan endpoint `GetDeviceInformation`, `GetCapabilities`, `GetProfiles`, `GetStreamUri`, dan snapshot HTTP `/snapshot.jpg`.
    - **RTSP Live H.264 Server (Port 8554):** Kompatibel penuh dengan VLC Media Player (`rtsp://<IP-HP>:8554/live`), OBS Studio, ffmpeg, dan NVR CCTV via TCP maupun UDP.
