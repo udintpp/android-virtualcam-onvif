@@ -96,7 +96,7 @@ class FloatingCamService : Service(), TextureView.SurfaceTextureListener {
     override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
         currentSurface = Surface(surfaceTexture)
         currentSurface?.let {
-            VirtualCamService.currentInstance?.attachSourceToSurface(it, width, height)
+            VirtualCamService.currentInstance?.attachPreviewSurface(it, width, height)
         }
     }
 

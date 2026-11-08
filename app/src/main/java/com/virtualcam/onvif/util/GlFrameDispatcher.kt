@@ -202,13 +202,14 @@ class GlFrameDispatcher(
         val version = IntArray(2)
         EGL14.eglInitialize(eglDisplay, version, 0, version, 1)
 
+        val eglRecordableAndroid = 0x3142
         val configAttribs = intArrayOf(
             EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
             EGL14.EGL_RED_SIZE, 8,
             EGL14.EGL_GREEN_SIZE, 8,
             EGL14.EGL_BLUE_SIZE, 8,
             EGL14.EGL_ALPHA_SIZE, 8,
-            EGL14.EGL_RECORDABLE_ANDROID, 1,
+            eglRecordableAndroid, 1,
             EGL14.EGL_NONE
         )
 
