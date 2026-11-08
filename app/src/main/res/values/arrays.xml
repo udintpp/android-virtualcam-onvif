@@ -1,0 +1,14 @@
+<resources>
+    <!-- Target package scope for LSPosed / Xposed -->
+    <string-array name="xposed_scope">
+        <item>com.whatsapp</item>
+        <item>com.whatsapp.w4b</item>
+        <item>us.zoom.videomeetings</item>
+        <item>com.google.android.apps.meetings</item>
+        <item>org.telegram.messenger</item>
+        <item>com.zhiliaoapp.musically</item>
+        <item>com.ss.android.ugc.trill</item>
+        <item>com.android.chrome</item>
+        <item>com.instagram.android</item>
+    </string-array>
+</resources>

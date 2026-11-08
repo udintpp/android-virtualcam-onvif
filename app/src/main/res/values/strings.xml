@@ -1,0 +1,33 @@
+<resources>
+    <string name="app_name">VirtualCam ONVIF</string>
+    <string name="virtual_camera_title">Virtual Camera Provider</string>
+    <string name="status_running">STREAMING AKTIF</string>
+    <string name="status_stopped">STREAMING BERHENTI</string>
+    <string name="ip_address_label">Alamat IP Lokal</string>
+    <string name="rtsp_url_label">RTSP Stream URL</string>
+    <string name="onvif_url_label">ONVIF Device URL</string>
+    <string name="btn_start_stream">Mulai Streaming &amp; ONVIF</string>
+    <string name="btn_stop_stream">Hentikan Streaming</string>
+    <string name="source_video">File Video (MP4)</string>
+    <string name="source_screen">Tampilan Layar (Screen Mirror)</string>
+    <string name="source_test_pattern">Test Pattern (SMPTE Bars)</string>
+    <string name="btn_select_video">Pilih Video MP4</string>
+    <string name="no_video_selected">Belum ada video dipilih</string>
+    <string name="loop_video">Putar Ulang Otomatis (Loop)</string>
+    <string name="virtual_cam_features">Fitur Virtual Kamera Android</string>
+    <string name="btn_test_intent_cam">Uji Kamera Virtual (Intent Mode)</string>
+    <string name="toggle_floating_preview">Floating Controller di Atas Aplikasi Lain</string>
+    <string name="xposed_guide_title">Integrasi LSPosed / Xposed (Direct Camera Hook)</string>
+    <string name="xposed_guide_desc">Untuk aplikasi yang membuka kamera secara langsung (WhatsApp Video Call, Zoom, Meet, Google Chrome), aktifkan modul ini di aplikasi LSPosed atau LSPatch lalu pilih aplikasi target yang ingin disuntikkan video kamera virtual.</string>
+    <string name="resolution_label">Resolusi &amp; FPS</string>
+    <string name="resolution_1080p">1080p Full HD (1920x1080)</string>
+    <string name="resolution_720p">720p HD (1280x720)</string>
+    <string name="resolution_480p">480p SD (854x480)</string>
+    <string name="copied_to_clipboard">URL disalin ke clipboard</string>
+    <string name="notification_channel_name">Layanan Virtual Camera &amp; ONVIF</string>
+    <string name="notification_channel_desc">Notifikasi foreground saat Virtual Camera &amp; server ONVIF/RTSP aktif</string>
+    <string name="notification_text">ONVIF &amp; RTSP aktif di %1$s</string>
+    <string name="capture_photo">Ambil Foto</string>
+    <string name="record_video">Rekam Video</string>
+    <string name="stop_record">Selesai Rekam</string>
+</resources>
